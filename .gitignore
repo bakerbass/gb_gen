@@ -5,3 +5,5 @@ notes.md
 __pycache__
 *.mid
 .DS_Store
+run_console.py
+requirements.txt
