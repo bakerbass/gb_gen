@@ -17,7 +17,7 @@ from anticipation.config import *
 from anticipation.vocab import *
 from model_loader import load_model
 from audio_utils import normalize_wav
-from midi_util import detect_bpm
+from midi_utils import detect_bpm
 
 def process_midi_file(midi_file_path, start_time, end_time, model, time_unit='bars'):
     bpm = detect_bpm(midi_file_path)
