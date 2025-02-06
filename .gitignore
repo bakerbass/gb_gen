@@ -60,3 +60,15 @@ data/audio/midi_output.wav
 data/audio/inpainted.wav
 data/audio/combined.wav
 output.png
+.DS_Store
+__pycache__/inpaint.cpython-312.pyc
+__pycache__/midi_util.cpython-312.pyc
+client/__init__.py
+client/client.py
+data/.DS_Store
+data/audio/combined.wav
+data/audio/inpainted.wav
+data/audio/midi_output.wav
+data/output/combined.mid
+data/output/inpainted.mid
+output.png
