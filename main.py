@@ -10,6 +10,7 @@ from midi_utils import validate_midi_file, get_total_bars
 from inpaint import process_midi_file
 import synth
 from send_midi_osc import send_midi
+from chords import MIDI_Stream
 import chords
 def open_neuralnote(app_path):
     try:
@@ -45,9 +46,23 @@ def load_midi(file_path):
             print("Subsequent file being sent! File path:" + file_path + " | File no. " + str(midi_file_count))
             send_midi(client, file_path, fire_immediately=False, clip_index=midi_file_count-1, file_idx=midi_file_count)
     return midi_file_path
-
+def midi_to_GB_UDP(midi_file_path):
+    midi_stream = MIDI_Stream(midi_file_path)
+    chords, strum, pluck = midi_stream.get_UDP_lists()
+    chords_list = [list(item) for item in chords]
+    strum_list = [list(item) for item in strum]
+    pluck_list = [list(item) for item in pluck]
+    
+    print(chords_list)
+    print(strum_list)
+    print(pluck_list)
+    
+    client.send_message("/Chords", chords_list)
+    client.send_message("/Strum", strum_list)
+    client.send_message("/Pluck", pluck_list)
+    
 def start_watching_directory(input_directory):
-    watch_directory(input_directory, load_midi)
+    watch_directory(input_directory, midi_to_GB_UDP)
 
 def start_server(ip, port):
     dispatcher = Dispatcher()
@@ -70,7 +85,7 @@ if __name__ == "__main__":
     # open_neuralnote(neuralnote_path) # commented for vst use
     synth.initialize_fluidsynth()
 
-    input_directory = "/Users/ryanbaker/Library/Caches/NeuralNote"  # Directory to watch for new MIDI files
+    input_directory = "/Users/music/Library/Caches/NeuralNote"  # Directory to watch for new MIDI files
 
     # Load the model
     # print("Loading model...")

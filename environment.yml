@@ -40,6 +40,7 @@ dependencies:
     - pyparsing==3.2.1
     - python-dateutil==2.9.0.post0
     - PyYAML==6.0.2
+    - python-osc
     - regex==2024.11.6
     - requests==2.32.3
     - safetensors==0.5.2
@@ -56,4 +57,4 @@ dependencies:
     - urllib3==2.3.0
     - watchdog==6.0.0
     - wcwidth==0.2.13
-    - anticipation @ file:///Users/ryanbaker/Programming/note2note/anticipation
+    - anticipation @ file:///Users/music/RyanBaker/GuitarBot-Jams/note2anticipation/anticipation

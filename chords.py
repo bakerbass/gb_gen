@@ -36,10 +36,10 @@ class MIDI_Stream:
         # beats_total = int((self.get_tempo()/60)*self.duration)
         #print(self.duration)
         beats_total = int((self.bpm/60)*self.duration)
-        print("Beats total: ", beats_total)
+        # print("Beats total: ", beats_total)
         # quarter_length = self.duration/beats_total
         quarter_length = 60 / self.bpm
-        print("Quarter length: ", quarter_length)
+        # print("Quarter length: ", quarter_length)
         sixteenth = quarter_length/4
         notes = self.get_notes()
         # #print(beats_total)
@@ -123,35 +123,35 @@ class MIDI_Stream:
         else:
             return "HOLD"
 
-def get_UDP_lists(self):
-    """
-    Iterates over the full chord list and returns two lists:
-    
-    chord_list: list of tuples (chord_symbol, time_in_seconds)
-    strum_list: list of tuples (strum_direction, time_in_seconds)
-    
-    The time is calculated as:
-        (float(chord[3].split(" ")[-1]) - 1) / self.bpm * 60
-    """
-    full_chords = self.get_full_chord_list()
-    chord_list = []
-    strum_list = []
-    pluck_list = []
-    for chord in full_chords:
-        # Converting from quarter note to seconds here (this is quantizing the time, may need to rework this)
-        beat_str = chord[3].split(" ")[-1]
-        try:
-            beat = float(beat_str)
-        except ValueError:
-            beat = 0.0
-        time_in_seconds = (beat - 1) / self.bpm * 60
-        if "pedal" in chord[0]:
-            pluck_list.append((chord[0], time_in_seconds))
-        elif chord[4] != "HOLD" and chord[0] != "Chord Symbol Cannot Be Identified":
-            chord_list.append((chord[0], time_in_seconds))
-            strum_list.append((chord[4], time_in_seconds))
+    def get_UDP_lists(self):
+        """
+        Iterates over the full chord list and returns two lists:
+        
+        chord_list: list of tuples (chord_symbol, time_in_seconds)
+        strum_list: list of tuples (strum_direction, time_in_seconds)
+        
+        The time is calculated as:
+            (float(chord[3].split(" ")[-1]) - 1) / self.bpm * 60
+        """
+        full_chords = self.get_full_chord_list()
+        chord_list = []
+        strum_list = []
+        pluck_list = []
+        for chord in full_chords:
+            # Converting from quarter note to seconds here (this is quantizing the time, may need to rework this)
+            beat_str = chord[3].split(" ")[-1]
+            try:
+                beat = float(beat_str)
+            except ValueError:
+                beat = 0.0
+            time_in_seconds = (beat - 1) / self.bpm * 60
+            if "pedal" in chord[0]:
+                pluck_list.append((chord[0], time_in_seconds))
+            elif chord[4] != "HOLD" and chord[0] != "Chord Symbol Cannot Be Identified":
+                chord_list.append((chord[0], time_in_seconds))
+                strum_list.append((chord[4], time_in_seconds))
 
-    return chord_list, strum_list, pluck_list
+        return chord_list, strum_list, pluck_list
 if __name__ == "__main__":
     start = time.time()
     midi_path = "sharptest.mid"
@@ -159,4 +159,4 @@ if __name__ == "__main__":
     chords = midi_stream.get_full_chord_list()
     end = time.time()
     #print(end - start)
-    pprint.pp(get_UDP_lists(midi_stream))
+    pprint.pp(midi_stream.get_UDP_lists(midi_stream))
