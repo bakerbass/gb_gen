@@ -22,9 +22,9 @@ class MidiFileHandler(FileSystemEventHandler):
         """
         Triggered when a file or directory is modified.
         """
-        if not event.is_directory and event.src_path.endswith(".mid"):
-            print(f"File modified: {event.src_path}")
-            self.callback(event.src_path)
+        # if not event.is_directory and event.src_path.endswith(".mid"):
+        #     print(f"File modified: {event.src_path}")
+        #     self.callback(event.src_path)
 
 def watch_directory(path_to_watch, callback, recursive=True):
     """
