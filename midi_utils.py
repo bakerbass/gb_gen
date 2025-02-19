@@ -1,4 +1,4 @@
-from mido import MidiFile, tempo2bpm, MidiTrack
+from mido import MidiFile, tempo2bpm, MidiTrack, Message
 
 def validate_midi_file(file_path):
     """
@@ -73,3 +73,39 @@ def get_total_bars(midi_file_path):
     total_bars = total_beats / beats_per_bar
 
     return int(total_bars)
+
+def strip_melody(midi_file_path, output_file_path):
+    """
+    Strips the melody from the entire MIDI file except the first second.
+
+    :param midi_file_path: Path to the input MIDI file.
+    :param output_file_path: Path to the output MIDI file.
+    """
+    midi = MidiFile(midi_file_path)
+    output_midi = MidiFile()
+    output_track = MidiTrack()
+    output_midi.tracks.append(output_track)
+
+    current_notes = []
+    time_elapsed = 0
+    first_second_passed = False
+
+    for msg in midi.play():
+        time_elapsed += msg.time
+        if time_elapsed > midi.ticks_per_beat:  # Assuming 1 second has passed
+            first_second_passed = True
+
+        if first_second_passed:
+            if msg.type == 'note_on' and msg.velocity > 0:
+                current_notes.append(msg)
+                highest_note = max(current_notes, key=lambda x: x.note)
+                output_track.append(highest_note)
+            elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
+                current_notes = [note for note in current_notes if note.note != msg.note]
+                if current_notes:
+                    highest_note = max(current_notes, key=lambda x: x.note)
+                    output_track.append(highest_note)
+        else:
+            output_track.append(msg)
+
+    output_midi.save(output_file_path)
