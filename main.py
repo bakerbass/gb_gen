@@ -6,7 +6,7 @@ from pythonosc.dispatcher import Dispatcher
 from pythonosc import osc_server, udp_client
 from watcher import watch_directory
 from model_loader import load_model
-from midi_utils import validate_midi_file, get_total_bars, extract_melody
+from midi_utils import validate_midi_file, get_total_bars, save_midi_file
 from anti import inpaint, continuation
 import synth
 from send_midi_osc import send_midi
@@ -20,17 +20,21 @@ def open_neuralnote(app_path):
         print(f"Failed to open NeuralNote: {e}")
 
 file_count = 0
+
 def midi_to_liveosc(file_path, segmented_sends=False, input_offset=0):
     global midi_file_count, midi_file_path
+
     if not validate_midi_file(file_path):
         return
-    elif (segmented_sends):
+
+    midi_file_path = file_path
+    
+    if (segmented_sends):
         midi_file_path = file_path
         if midi_file_count == 0:
             print("First file being sent! File path:" + file_path + " | File no. " + str(midi_file_count))
             # First file: send immediately with fire_immediately False and no offset.
             send_midi(client, file_path, fire_immediately=True, time_offset=8)
-            midi_file_path = file_path
             midi_file_count += 1
         elif midi_file_count == 1:
             print("Second file being sent! File path:" + file_path + " | File no. " + str(midi_file_count))
@@ -44,9 +48,11 @@ def midi_to_liveosc(file_path, segmented_sends=False, input_offset=0):
     else:
         send_midi(client, file_path, fire_immediately=True, time_offset=input_offset)
     return midi_file_path
-
+def anti_to_liveosc(file_path, clip_index=1):
+    if not validate_midi_file(file_path):
+        return
+    send_midi(client, file_path, fire_immediately=False, clip_index=clip_index)
 def midi_to_GB_UDP(midi_file_path):
-    new_acc = continuation(midi_file_path, model, 16, time_unit='bars', debug=False, viz=False)
     midi_stream = MIDI_Stream(midi_file_path)
 
     chords, strum, pluck = midi_stream.get_UDP_lists()
@@ -58,7 +64,7 @@ def midi_to_GB_UDP(midi_file_path):
     print(strum_list)
     # print(pluck_list)
 
-    midi_stream = MIDI_Stream(new_acc)
+    # midi_stream = MIDI_Stream(new_acc)
 
     chords, strum, pluck = midi_stream.get_UDP_lists()
     chords_list = [list(item) for item in chords]
@@ -74,8 +80,11 @@ def midi_to_GB_UDP(midi_file_path):
     client.send_message("/Strum", strum_list)
     client.send_message("/Pluck", pluck_list)
     
-def start_watching_directory(input_directory):
+def watch_NN_dir(input_directory):
     watch_directory(input_directory, midi_to_liveosc)
+
+def watch_Anti_dir(input_directory):
+    watch_directory(input_directory, anti_to_liveosc)
 
 def start_server(ip, port):
     dispatcher = Dispatcher()
@@ -87,10 +96,18 @@ def start_server(ip, port):
 def print_error(address, args):
     print("Received error from Live: %s" % args)
 
-midi_file_path = "test_midis/flatstest.mid" #None
+
+midi_file_path = None
 model = None
 neuralnote_path = "../NeuralNote/build/NeuralNote_artefacts/Release/Standalone/NeuralNote.app/"  # Path to NeuralNote
-model_size = 'small'
+model_size = 'large'
+def chord_continuation(file_path, anti_dir):
+    global model
+    if not model:
+        print("Model not loaded. Please load a model first.")
+        return
+    new_acc = continuation(file_path, model, 16, time_unit='bars', debug=True, viz=False)
+    save_midi_file(new_acc, anti_dir + "/continuation.mid")
 
 if __name__ == "__main__":
     print("Hello!")
@@ -98,13 +115,16 @@ if __name__ == "__main__":
     # open_neuralnote(neuralnote_path) # commented for vst use
     synth.initialize_fluidsynth()
 
-    input_directory = "./watcher"  # Directory to watch for new MIDI files
-    if not os.path.exists(input_directory):
-        os.makedirs(input_directory)
+    NN_dir = "./watcherNN"  # Directory to watch for new MIDI files from neuralnote (or a test directory)
+    if not os.path.exists(NN_dir):
+        os.makedirs(NN_dir)
+    Anti_dir = "./watcherAnti"  # Directory to watch for new MIDI files from Anticipation 
+    if not os.path.exists(Anti_dir):
+        os.makedirs(Anti_dir)
     
     # Load the model
     print("Loading model...")
-    model = load_model(model_size).cuda()
+    model = load_model(model_size)
     print(f"Model loaded: {model_size}")
 
     # Start the OSC server in a separate thread
@@ -119,15 +139,21 @@ if __name__ == "__main__":
     client_port = 11000
     client = udp_client.SimpleUDPClient(client_ip, client_port)
 
-    # Start watching the directory for new or modified MIDI files in a separate thread
-    watcher_thread = threading.Thread(target=start_watching_directory, args=(input_directory,))
-    watcher_thread.daemon = True
-    watcher_thread.start()
+    # Start watching the directory for new MIDI files in a separate thread
+    NNWatcher_thread = threading.Thread(target=watch_NN_dir, args=(NN_dir,))
+    NNWatcher_thread.daemon = True
+    NNWatcher_thread.start()
+
+    AntiWatcher_thread = threading.Thread(target=watch_Anti_dir, args=(Anti_dir,))
+    AntiWatcher_thread.daemon = True
+    AntiWatcher_thread.start()
 
     # Wait for a MIDI file to be detected
-    while True:
+    while not os.listdir(NN_dir):
         time.sleep(1)
-
+    print(midi_file_path)
+    cont = continuation(midi_file_path, model, 16, time_unit='bars', debug=True, viz=False)
+    save_midi_file(cont, Anti_dir + "/continuation.mid")
     # # Process the detected MIDI file
     # synth.synthesize_midi(midi_file_path)
 
