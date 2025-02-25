@@ -72,3 +72,7 @@ data/audio/midi_output.wav
 data/output/combined.mid
 data/output/inpainted.mid
 output.png
+Anticipatory_Music_Transformer.ipynb
+json_data/
+track_annotations.json
+user_selections.json

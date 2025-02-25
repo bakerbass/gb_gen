@@ -1,4 +1,4 @@
-name: note2note
+name: note2anticipation
 dependencies:
   - python=3.11
   - pip
@@ -57,4 +57,4 @@ dependencies:
     - urllib3==2.3.0
     - watchdog==6.0.0
     - wcwidth==0.2.13
-    - anticipation @ file:///Users/music/RyanBaker/GuitarBot-Jams/note2anticipation/anticipation
+    - anticipation @ file:///Users/ryanb/OneDrive/Documents/MyPythonProjects/note2anticipation/anticipation

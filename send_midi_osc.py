@@ -45,8 +45,11 @@ def send_midi(client, file_path, bpm=120, timesig=[4, 4], fire_immediately=False
         # Send note events to Ableton
         for event in note_events:
             client.send_message("/live/clip/add/notes", list(event))
-        client.send_message("/live/clip/set/loop_start", [track_index, clip_index, 8])
-        client.send_message("/live/clip/set/loop_end", [track_index, clip_index, 24])
+        if not (time_offset == 0):
+            client.send_message("/live/clip/set/loop_start", [track_index, clip_index, 8])
+            client.send_message("/live/clip/set/loop_end", [track_index, clip_index, 24])
+        else:
+            client.send_message("/live/clip/set/loop_end", [track_index, clip_index, clip_length * 4])
         if fire_immediately: # honestly this stuff should happen outside of this file
             print("Fire away!")
             client.send_message("/live/clip/fire", [track_index, clip_index])

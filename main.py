@@ -6,8 +6,8 @@ from pythonosc.dispatcher import Dispatcher
 from pythonosc import osc_server, udp_client
 from watcher import watch_directory
 from model_loader import load_model
-from midi_utils import validate_midi_file, get_total_bars
-from inpaint import process_midi_file
+from midi_utils import validate_midi_file, get_total_bars, extract_melody
+from anti import inpaint, continuation
 import synth
 from send_midi_osc import send_midi
 from chords import MIDI_Stream
@@ -19,17 +19,13 @@ def open_neuralnote(app_path):
     except Exception as e:
         print(f"Failed to open NeuralNote: {e}")
 
-midi_file_count = -2
-midi_file_path = None
-def load_midi(file_path):
+file_count = 0
+def midi_to_liveosc(file_path, segmented_sends=False, input_offset=0):
     global midi_file_count, midi_file_path
     if not validate_midi_file(file_path):
         return
-    else:
+    elif (segmented_sends):
         midi_file_path = file_path
-        if midi_file_count < 0:
-            print("Ignoring first files: " + file_path)
-            midi_file_count += 1
         if midi_file_count == 0:
             print("First file being sent! File path:" + file_path + " | File no. " + str(midi_file_count))
             # First file: send immediately with fire_immediately False and no offset.
@@ -45,9 +41,14 @@ def load_midi(file_path):
         else:
             print("Subsequent file being sent! File path:" + file_path + " | File no. " + str(midi_file_count))
             send_midi(client, file_path, fire_immediately=False, clip_index=midi_file_count-1, file_idx=midi_file_count)
+    else:
+        send_midi(client, file_path, fire_immediately=True, time_offset=input_offset)
     return midi_file_path
+
 def midi_to_GB_UDP(midi_file_path):
+    new_acc = continuation(midi_file_path, model, 16, time_unit='bars', debug=False, viz=False)
     midi_stream = MIDI_Stream(midi_file_path)
+
     chords, strum, pluck = midi_stream.get_UDP_lists()
     chords_list = [list(item) for item in chords]
     strum_list = [list(item) for item in strum]
@@ -55,14 +56,26 @@ def midi_to_GB_UDP(midi_file_path):
     
     print(chords_list)
     print(strum_list)
-    print(pluck_list)
+    # print(pluck_list)
+
+    midi_stream = MIDI_Stream(new_acc)
+
+    chords, strum, pluck = midi_stream.get_UDP_lists()
+    chords_list = [list(item) for item in chords]
+    strum_list = [list(item) for item in strum]
+    pluck_list = [list(item) for item in pluck]
     
+    print(chords_list)
+    print(strum_list)
+    # print(pluck_list)
+
+
     client.send_message("/Chords", chords_list)
     client.send_message("/Strum", strum_list)
     client.send_message("/Pluck", pluck_list)
     
 def start_watching_directory(input_directory):
-    watch_directory(input_directory, midi_to_GB_UDP)
+    watch_directory(input_directory, midi_to_liveosc)
 
 def start_server(ip, port):
     dispatcher = Dispatcher()
@@ -74,10 +87,10 @@ def start_server(ip, port):
 def print_error(address, args):
     print("Received error from Live: %s" % args)
 
-midi_file_path = None
+midi_file_path = "test_midis/flatstest.mid" #None
 model = None
 neuralnote_path = "../NeuralNote/build/NeuralNote_artefacts/Release/Standalone/NeuralNote.app/"  # Path to NeuralNote
-model_size = 'large'
+model_size = 'small'
 
 if __name__ == "__main__":
     print("Hello!")
@@ -85,12 +98,14 @@ if __name__ == "__main__":
     # open_neuralnote(neuralnote_path) # commented for vst use
     synth.initialize_fluidsynth()
 
-    input_directory = "/Users/music/Library/Caches/NeuralNote"  # Directory to watch for new MIDI files
-
+    input_directory = "./watcher"  # Directory to watch for new MIDI files
+    if not os.path.exists(input_directory):
+        os.makedirs(input_directory)
+    
     # Load the model
-    # print("Loading model...")
-    # model = load_model(model_size)
-    # print(f"Model loaded: {model_size}")
+    print("Loading model...")
+    model = load_model(model_size).cuda()
+    print(f"Model loaded: {model_size}")
 
     # Start the OSC server in a separate thread
     server_ip = "127.0.0.1"

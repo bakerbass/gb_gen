@@ -10,8 +10,6 @@ class MIDI_Stream:
         self.midi_stream = pretty_midi.PrettyMIDI(midi_file)
         self.duration = self.midi_stream.get_end_time()
         self.bpm = bpm
-        if self.bpm is None:
-            self.bpm = self.get_tempo()
         self.timesig = timesig
     def get_tempo(self):
         tempo_changes = self.midi_stream.get_tempo_changes()
@@ -32,6 +30,7 @@ class MIDI_Stream:
         return notes
 
     def get_full_chord_list(self):
+
         # #print(self.duration)
         # beats_total = int((self.get_tempo()/60)*self.duration)
         #print(self.duration)
@@ -133,6 +132,9 @@ class MIDI_Stream:
         The time is calculated as:
             (float(chord[3].split(" ")[-1]) - 1) / self.bpm * 60
         """
+        if self.bpm is None:
+            self.bpm = self.get_tempo()
+        print("BPM: ", self.bpm)
         full_chords = self.get_full_chord_list()
         chord_list = []
         strum_list = []
