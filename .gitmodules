@@ -1,6 +1,3 @@
-[submodule "MIDI_Melody_Extraction"]
-	path = MIDI_Melody_Extraction
-	url = https://github.com/xinyiguan/MIDI_Melody_Extraction.git
 [submodule "anticipation"]
 	path = anticipation
 	url = https://github.com/jthickstun/anticipation.git
