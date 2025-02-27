@@ -12,6 +12,7 @@ import synth
 from send_midi_osc import send_midi
 from chords import MIDI_Stream
 import chords
+from melody import rule_based_melody
 def open_neuralnote(app_path):
     try:
         subprocess.Popen(["open", app_path])
@@ -47,6 +48,7 @@ def midi_to_liveosc(file_path, segmented_sends=False, input_offset=0):
             send_midi(client, file_path, fire_immediately=False, clip_index=midi_file_count-1, file_idx=midi_file_count)
     else:
         send_midi(client, file_path, fire_immediately=True, time_offset=input_offset)
+    interact() # melody, continuation, send continuation to liveosc
     return midi_file_path
 def anti_to_liveosc(file_path, clip_index=1):
     if not validate_midi_file(file_path):
@@ -55,21 +57,20 @@ def anti_to_liveosc(file_path, clip_index=1):
 def midi_to_GB_UDP(midi_file_path):
     midi_stream = MIDI_Stream(midi_file_path)
 
-    chords, strum, pluck = midi_stream.get_UDP_lists()
+    chords, strum, pluck, m21chords = midi_stream.get_UDP_lists()
     chords_list = [list(item) for item in chords]
     strum_list = [list(item) for item in strum]
     pluck_list = [list(item) for item in pluck]
-    
     print(chords_list)
     print(strum_list)
     # print(pluck_list)
 
     # midi_stream = MIDI_Stream(new_acc)
 
-    chords, strum, pluck = midi_stream.get_UDP_lists()
-    chords_list = [list(item) for item in chords]
-    strum_list = [list(item) for item in strum]
-    pluck_list = [list(item) for item in pluck]
+    # chords, strum, pluck, m21chords = midi_stream.get_UDP_lists()
+    # chords_list = [list(item) for item in chords]
+    # strum_list = [list(item) for item in strum]
+    # pluck_list = [list(item) for item in pluck]
     
     print(chords_list)
     print(strum_list)
@@ -89,18 +90,23 @@ def watch_Anti_dir(input_directory):
 def start_server(ip, port):
     dispatcher = Dispatcher()
     dispatcher.map("/live/error", print_error)
+    dispatcher.map("/live/", playing_position_handler)
     server = osc_server.ThreadingOSCUDPServer((ip, port), dispatcher)
     print("Serving on {}".format(server.server_address))
     # server.serve_forever()
 
 def print_error(address, args):
     print("Received error from Live: %s" % args)
-
+playing_position = -1
+def playing_position_handler(address, *args):
+    global playing_position
+    playing_position = args[0]  # assumes a single float value is sent
+    print(f"Received playing position: {playing_position}")
 
 midi_file_path = None
 model = None
 neuralnote_path = "../NeuralNote/build/NeuralNote_artefacts/Release/Standalone/NeuralNote.app/"  # Path to NeuralNote
-model_size = 'large'
+model_size = 'small'
 def chord_continuation(file_path, anti_dir):
     global model
     if not model:
@@ -108,6 +114,20 @@ def chord_continuation(file_path, anti_dir):
         return
     new_acc = continuation(file_path, model, 16, time_unit='bars', debug=True, viz=False)
     save_midi_file(new_acc, anti_dir + "/continuation.mid")
+
+def interact():
+    print(midi_file_path)
+    # Need to put these in functions and do this properly
+    while playing_position < 32:
+        client.send_message("/live/clip/get/playing_position", [0,0])
+        time.sleep(0.1)
+    midi_stream = MIDI_Stream(midi_file_path)
+    chords, strum, pluck, full_chords = midi_stream.get_UDP_lists()
+    melody_path = rule_based_melody(full_chords)
+    send_midi(client, melody_path, fire_immediately=True, track_index=1)
+    cont = continuation(midi_file_path, model, 16, time_unit='bars', debug=True, viz=True)
+    save_midi_file(cont, Anti_dir + "/continuation.mid")
+    anti_to_liveosc(Anti_dir + "/continuation.mid")
 
 if __name__ == "__main__":
     print("Hello!")
@@ -149,15 +169,6 @@ if __name__ == "__main__":
     AntiWatcher_thread.start()
 
     # Wait for a MIDI file to be detected
-    while not os.listdir(NN_dir):
+    while True:
         time.sleep(1)
-    print(midi_file_path)
-    cont = continuation(midi_file_path, model, 16, time_unit='bars', debug=True, viz=False)
-    save_midi_file(cont, Anti_dir + "/continuation.mid")
-    # # Process the detected MIDI file
-    # synth.synthesize_midi(midi_file_path)
 
-    # inpainted, combined = process_midi_file(midi_file_path, start_time=2, end_time=6, model=model, time_unit='seconds')
-    # synth.synthesize_tokens(combined, name='combined')
-    # synth.synthesize_tokens(inpainted, name='inpainted')
-    # print("Done!")
