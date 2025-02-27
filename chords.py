@@ -1,7 +1,7 @@
-from music21 import converter, chord, harmony
+from music21 import converter, chord, harmony, note, stream, midi
 import time
 import pretty_midi
-import pprint
+from pprint import pprint
 import re
 
 class MIDI_Stream:
@@ -34,6 +34,8 @@ class MIDI_Stream:
         # #print(self.duration)
         # beats_total = int((self.get_tempo()/60)*self.duration)
         #print(self.duration)
+        if self.bpm is None:
+            self.bpm = self.get_tempo()
         beats_total = int((self.bpm/60)*self.duration)
         # print("Beats total: ", beats_total)
         # quarter_length = self.duration/beats_total
@@ -99,7 +101,8 @@ class MIDI_Stream:
                 "7th: " + str(chord_seventh),
                 "9th: " + str(chord_9),
                 "11th: " + str(chord_11),
-                "13th: " + str(chord_13)
+                "13th: " + str(chord_13),
+                m21chord
             ))
             # prev_chord = m21chord.pitchedCommonName
             curr_max_interval_length += quarter_length
@@ -153,12 +156,12 @@ class MIDI_Stream:
                 chord_list.append((chord[0], time_in_seconds))
                 strum_list.append((chord[4], time_in_seconds))
 
-        return chord_list, strum_list, pluck_list
+        return chord_list, strum_list, pluck_list, full_chords
 if __name__ == "__main__":
     start = time.time()
-    midi_path = "sharptest.mid"
+    midi_path = "test_midis/flatstest.mid"
     midi_stream = MIDI_Stream(midi_path)
     chords = midi_stream.get_full_chord_list()
     end = time.time()
     #print(end - start)
-    pprint.pp(midi_stream.get_UDP_lists(midi_stream))
+    chords, strum, pluck, full_chords = midi_stream.get_UDP_lists()
