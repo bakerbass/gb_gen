@@ -64,7 +64,7 @@ def midi_to_GB_UDP(midi_file_path):
     print(chords_list)
     print(strum_list)
 
-    melody = rule_based_melody(full_chords)
+    pluck_message, melody_path = rule_based_melody(full_chords)
     # pluck_message = [[note (midi value), duration, speed, timestamp]]
 
     client.send_message("/Chords", chords_list)
