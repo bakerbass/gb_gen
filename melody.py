@@ -17,12 +17,20 @@ def rule_based_melody(full_chords, bpm=120, debug=False):
         random_index = random.randint(0, len(m21chord) - 1)
         random_mel_pitch = m21chord[random_index]
         n = note.Note(random_mel_pitch, type="quarter")
-        if n.pitch.implicitOctave < 5:
+        if n.pitch.midi < 40:
             if debug:
-                print("shifting " + str(n.pitch) + " to ")
-            n.pitch.octave += (5 - n.pitch.implicitOctave)
+                print("Note", n.pitch, "is below 40, adjusting upward...")
+            while n.pitch.midi < 40:
+                n.pitch.octave += 1
             if debug:
-                print(n.pitch)
+                print("Adjusted to", n.pitch)
+        elif n.pitch.midi > 68:
+            if debug:
+                print("Note", n.pitch, "is above 68, adjusting downward...")
+            while n.pitch.midi > 68:
+                n.pitch.octave -= 1
+            if debug:
+                print("Adjusted to", n.pitch)
         melody.append(n)
         # Append pluck message with note's midi, duration, default speed, and timestamp.
         pluck_message.append([n.pitch.midi, n.quarterLength * quarter_note_duration, default_speed, time_cursor])
