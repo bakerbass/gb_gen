@@ -13,6 +13,7 @@ from send_midi_osc import send_midi
 from chords import MIDI_Stream
 import chords
 from melody import rule_based_melody
+from pprint import pprint
 def open_neuralnote(app_path):
     try:
         subprocess.Popen(["open", app_path])
@@ -112,14 +113,19 @@ def continue_and_send():
     anti_to_liveosc(Anti_dir + "/continuation.mid")
 
 def interact():
-    threading.Thread(target=continue_and_send, daemon=True).start()
-    client.send_message("/live/clip/start_listen/playing_position", [0,0])
-    while playing_position < 60.0:
-        time.sleep(1)
-    # print("Moving on! Playing position: ", playing_position)
+    # threading.Thread(target=continue_and_send, daemon=True).start()
+    # client.send_message("/live/clip/start_listen/playing_position", [0,0])
+    # while playing_position < 60.0:
+    #     time.sleep(1)
+    # # print("Moving on! Playing position: ", playing_position)
+    start = time.time()
     midi_stream = MIDI_Stream(midi_file_path)
-    chords, strum, pluck, full_chords = midi_stream.get_UDP_lists()
-    melody_path = rule_based_melody(full_chords)
+    simple_chords = midi_stream.get_simple_chords()
+    melody, melody_path = rule_based_melody(simple_chords)
+    end = time.time()
+    melody_list = [list(item) for item in melody]
+    print("Time taken for melody generation: ", end-start)
+    pprint(melody_list)
     send_midi(client, melody_path, fire_immediately=True, track_index=1)
 
 if __name__ == "__main__":
@@ -136,9 +142,9 @@ if __name__ == "__main__":
         os.makedirs(Anti_dir)
     
     # Load the model
-    print("Loading model...")
-    model = load_model(model_size)
-    print(f"Model loaded: {model_size}")
+    # print("Loading model...")
+    # model = load_model(model_size)
+    # print(f"Model loaded: {model_size}")
 
     # Start the OSC server in a separate thread
     server_ip = "127.0.0.1"

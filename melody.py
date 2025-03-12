@@ -1,25 +1,23 @@
 from music21 import stream, note, midi
 import random
 
-def rule_based_melody(full_chords, bpm=120, debug=False):
+def rule_based_melody(full_chords, bpm=120, debug=False, speed_mode="direct"):
     number_of_chords = len(full_chords)
     melody = stream.Stream()
-    pluck_message = []  # Stores lists: [midi value, duration (seconds), speed, timestamp]
-    time_cursor = 0     # Running timestamp in seconds
-    default_speed = 7   # Change as needed
+    pluck_message = []  # Each entry: [midi value, duration (seconds), speed, timestamp]
+    time_cursor = 0     # Running timestamp (in seconds)
+    default_speed = 7   # Fallback speed value
     quarter_note_duration = 60 / bpm
 
-    prev_n = None         # Keep track of the last note (if any)
-    prev_pluck_idx = None # Index of the last pluck entry in pluck_message
+    prev_n = None         # Previous note (music21 note)
+    prev_pluck_idx = None # Index of last pluck_message entry
 
     for chord in full_chords:
-        # If chord is unknown, extend the previous note instead of inserting a rest.
+        # Unknown chord: instead of a rest, extend previous note.
         if chord[0] == "Chord Symbol Cannot Be Identified":
             if prev_n is not None:
-                # Extend previous note's duration by one quarter note.
-                extend_amt = quarter_note_duration  # duration in seconds
+                extend_amt = quarter_note_duration
                 prev_n.quarterLength += 1
-                # Also update the pluck message's duration.
                 pluck_message[prev_pluck_idx][1] += extend_amt
                 if debug:
                     print("Extended previous note to duration", prev_n.quarterLength)
@@ -36,42 +34,51 @@ def rule_based_melody(full_chords, bpm=120, debug=False):
         n = note.Note(random_mel_pitch, type="quarter")
 
         # Adjust note so that its MIDI value is within [40, 68]
-        if n.pitch.midi < 40:
+        min_midi = 50
+        max_midi = 68
+        if n.pitch.midi < min_midi:
             if debug:
                 print("Note", n.pitch, "is below 40, adjusting upward...")
-            while n.pitch.midi < 40:
+            while n.pitch.midi < min_midi:
                 n.pitch.octave += 1
             if debug:
                 print("Adjusted to", n.pitch)
-        elif n.pitch.midi > 68:
+        elif n.pitch.midi > max_midi:
             if debug:
                 print("Note", n.pitch, "is above 68, adjusting downward...")
-            while n.pitch.midi > 68:
+            while n.pitch.midi > max_midi:
                 n.pitch.octave -= 1
             if debug:
                 print("Adjusted to", n.pitch)
 
-        # If previous note exists and has the same MIDI value then merge (extend) it.
+        # Initial speed assignment (if not merged). We'll later adjust speeds
+        if speed_mode == "random":
+            speed_value = random.randint(1, 10)
+        elif speed_mode in ("direct", "proportional"):
+            speed_value = int((n.pitch.midi - min_midi) / (max_midi - min_midi) * 9) + 1
+        elif speed_mode in ("inverse", "inversely"):
+            int(9 / (n.pitch.midi - min_midi + 1)) + 1
+        else:
+            speed_value = default_speed
+        # Average speed with previous note (if any)
+        speed_value = int(0.5 * (speed_value + pluck_message[prev_pluck_idx][2] if prev_pluck_idx is not None else speed_value + 1))
+        # Merge if same note as previous.
         if prev_n is not None and n.pitch.midi == prev_n.pitch.midi:
             if debug:
                 print("Merging note", n.pitch, "with previous note.")
-            # Increase previous note's duration by current note's quarter length (1 quarter note)
             prev_n.quarterLength += n.quarterLength
-            # Update the corresponding pluck message duration.
             pluck_message[prev_pluck_idx][1] += n.quarterLength * quarter_note_duration
         else:
-            # Otherwise, add the note to the stream and record its pluck message.
             melody.append(n)
             pluck_message.append([
-                n.pitch.midi,              # MIDI value
-                n.quarterLength * quarter_note_duration,  # duration in seconds
-                default_speed,             # speed value
-                time_cursor                # timestamp (seconds)
+                n.pitch.midi,
+                n.quarterLength * quarter_note_duration,
+                speed_value,
+                time_cursor
             ])
             prev_n = n
             prev_pluck_idx = len(pluck_message) - 1
 
-        # Increase the time cursor by the duration of the note (in seconds)
         time_cursor += n.quarterLength * quarter_note_duration
 
     file_path = "rule_based_melody.mid"
