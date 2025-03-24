@@ -24,6 +24,9 @@ def open_neuralnote(app_path):
 file_count = 0
 
 def midi_to_liveosc(file_path, segmented_sends=False, input_offset=0):
+    print("/" + "="*50 + "/")
+    print("midi_to_liveosc()")
+    print("/" + "="*50 + "/\n")
     global midi_file_count, midi_file_path
 
     if not validate_midi_file(file_path):
@@ -52,20 +55,26 @@ def midi_to_liveosc(file_path, segmented_sends=False, input_offset=0):
     interact() # melody, continuation, send continuation to liveosc
     return midi_file_path
 def anti_to_liveosc(file_path, clip_index=1):
+    print("/" + "="*50 + "/")
+    print("anti_to_liveosc()")
+    print("/" + "="*50 + "/\n")
     if not validate_midi_file(file_path):
         return
     send_midi(client, file_path, fire_immediately=False, clip_index=clip_index)
 def midi_to_GB_UDP(midi_file_path):
+    print("/" + "="*50 + "/")
+    print("midi_to_GB_UDP()")
+    print("/" + "="*50 + "/\n")
     midi_stream = MIDI_Stream(midi_file_path)
 
     chords, strum, pluck, full_chords = midi_stream.get_UDP_lists()
     chords_list = [list(item) for item in chords]
     strum_list = [list(item) for item in strum]
-    pluck_list = [list(item) for item in pluck]
     print(chords_list)
     print(strum_list)
 
     pluck_message, melody_path = rule_based_melody(full_chords)
+    pluck_list = [list(item) for item in pluck_message]
     # pluck_message = [[note (midi value), duration, speed, timestamp]]
 
     client.send_message("/Chords", chords_list)
@@ -108,6 +117,9 @@ def chord_continuation(file_path, anti_dir):
     save_midi_file(new_acc, anti_dir + "/continuation.mid")
 
 def continue_and_send():
+    print("/" + "="*50 + "/")
+    print("continue_and_send()")
+    print("/" + "="*50 + "/\n")
     cont = continuation(midi_file_path, model, 16, time_unit='bars', debug=True, viz=False)
     save_midi_file(cont, Anti_dir + "/continuation.mid")
     anti_to_liveosc(Anti_dir + "/continuation.mid")
@@ -130,11 +142,17 @@ def interact():
 
 if __name__ == "__main__":
     print("Hello!")
-    print("Starting NeuralNote...")
+    # print("Starting NeuralNote...")
     # open_neuralnote(neuralnote_path) # commented for vst use
-    synth.initialize_fluidsynth()
-
-    NN_dir = "./watcherNN"  # Directory to watch for new MIDI files from neuralnote (or a test directory)
+    user = "LabMac"
+    if user == "LabMac":
+        NN_dir = "/Users/music/Library/Caches/NeuralNote/neuralnote"  # Directory to watch for new MIDI files from neuralnote (or a test directory)
+    elif  user == "RyanWindows":
+        NN_dir = './watcherNN'
+    elif user == "RyanMac":
+        NN_dir = '/Users/ryanbaker/Library/Caches/NeuralNote/neuralnote'
+    else:
+        NN_dir = './watcherNN'
     if not os.path.exists(NN_dir):
         os.makedirs(NN_dir)
     Anti_dir = "./watcherAnti"  # Directory to watch for new MIDI files from Anticipation 
