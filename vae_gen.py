@@ -1,7 +1,7 @@
 
-from pickler import process_directory_to_pickle
+from pickler import process_directory_to_pickle, midi_to_melody_array, m21_to_one_hot
 import chords
-import melody
+from melody import rule_based_melody
 import os
 import pickle
 import numpy as np
@@ -17,7 +17,7 @@ def note_array_to_onehot(note_array):
     pr[np.arange(0, len(note_array)), note_array.astype(int)] = 1.
     return pr
 
-def encode_midi(melody_array, chord_array, viz=False):
+def encode(melody_array, chord_array, viz=False):
     global device
     m1h = note_array_to_onehot(melody_array) # melody one-hot
     if viz:
@@ -31,7 +31,7 @@ def encode_midi(melody_array, chord_array, viz=False):
     zp1, zr1 = ec2vae_model.encoder(pm1h, pc1h) # latent pitch encoding, latent rhythm encoding
     return zp1, zr1
 
-def decode_latents(latent_pitch, latent_rhythm, viz=False):
+def decode(latent_pitch, latent_rhythm, viz=False):
     global device
     # decode
     m1h_prediction = ec2vae_model.decoder(latent_pitch, latent_rhythm) # predicted representation
@@ -97,4 +97,81 @@ if __name__ == "__main__":
         print("Chord array for", song_key, ":", chord_array)
     else:
         print(f"Song key '{song_key}' not found in the dictionary.")
+
+    ms = chords.MIDI_Stream(input_melody)
+    full_chords = ms.get_full_chord_list()
+    rbm, rbm_path = rule_based_melody(full_chords, bpm=120, debug=False)
     
+    in_mar = midi_to_melody_array(rbm_path)
+    in_car = m21_to_one_hot(full_chords)
+    
+    print("Size of reference melody array:", melody_array.shape[0])
+    print("Size of reference chord array:", chord_array.shape[0])
+
+    print("Size of input melody array:", in_mar.shape[0])
+    print("Size of input chord array:", in_car.shape[0])
+    
+    if melody_array.shape[0] < chord_array.shape[0]:
+        melody_array = np.concatenate((melody_array, np.zeros(chord_array.shape[0] - melody_array.shape[0], dtype=melody_array.dtype)))        
+        print("Reference melody is shorter than chord array, padding the ending of the melody array.")
+        print("New size of reference melody array:", melody_array.shape)
+        print("New size of reference chord array:", chord_array.shape)
+    elif melody_array.shape[0] > chord_array.shape[0]:
+        chord_array = np.concatenate((chord_array, np.zeros((melody_array.shape[0] - chord_array.shape[0], chord_array.shape[1]), dtype=chord_array.dtype)))        
+        print("Reference chord array is shorter than melody array, padding the ending of the chord array.")
+        print("New size of reference melody array:", melody_array.shape)
+        print("New size of reference chord array:", chord_array.shape)
+    # zp1, zr1 = encode(in_mar, in_car, viz=False)
+    
+    # zp2, zr2 = encode(melody_array, chord_array, viz=False)
+    
+    # prediciton = decode(zp1, zr2, viz=False)
+    # generate_midi(prediciton, "vae_test.mid", bpm=120, start=0., chord_array=chord_array)
+    final_prediction = None
+
+    # Process in windows of 32
+    window_size = 32
+
+    # Make sure arrays are padded to be divisible by window_size
+    total_length = max(in_mar.shape[0], melody_array.shape[0])
+    if total_length % window_size != 0:
+        total_length = ((total_length // window_size) + 1) * window_size
+
+    # Pad both input and reference arrays to the same length
+    if in_mar.shape[0] < total_length:
+        in_mar = np.concatenate((in_mar, np.zeros(total_length - in_mar.shape[0], dtype=in_mar.dtype)))
+        in_car = np.concatenate((in_car, np.zeros((total_length - in_car.shape[0], in_car.shape[1]), dtype=in_car.dtype)))
+        
+    if melody_array.shape[0] < total_length:
+        melody_array = np.concatenate((melody_array, np.zeros(total_length - melody_array.shape[0], dtype=melody_array.dtype)))
+        chord_array = np.concatenate((chord_array, np.zeros((total_length - chord_array.shape[0], chord_array.shape[1]), dtype=chord_array.dtype)))
+
+    print(f"Processing {total_length//window_size} windows of size {window_size}")
+
+    # Process each window
+    for i in range(0, total_length, window_size):
+        window_index = i//window_size + 1
+        print(f"Processing window {window_index}/{total_length//window_size}")
+        
+        # Get the current window
+        in_mar_window = in_mar[i:i+window_size]
+        in_car_window = in_car[i:i+window_size]
+        melody_window = melody_array[i:i+window_size]
+        chord_window = chord_array[i:i+window_size]
+        
+        # Encode both input and reference
+        zp1, zr1 = encode(in_mar_window, in_car_window, viz=False)
+        zp2, zr2 = encode(melody_window, chord_window, viz=False)
+        
+        # Create prediction using input's latent pitch and reference's latent rhythm
+        prediction_window = decode(zp1, zr2, viz=False)
+        
+        # Append the prediction window to our final prediction
+        if final_prediction is None:
+            final_prediction = prediction_window
+        else:
+            final_prediction = np.vstack((final_prediction, prediction_window))
+
+    # Generate MIDI from the final prediction
+    generate_midi(final_prediction, "vae_test.mid", bpm=120, start=0., chord_array=chord_array)
+
