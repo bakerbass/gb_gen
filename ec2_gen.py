@@ -1,5 +1,5 @@
 
-from pickler import process_directory_to_pickle, midi_to_melody_array, m21_to_one_hot
+from pickler import process_directory_to_ec2vae_pickle, midi_to_melody_array, m21_to_one_hot
 import chords
 from melody import rule_based_melody
 import os
@@ -9,6 +9,7 @@ import torch
 import pretty_midi as pm
 import matplotlib.pyplot as plt
 import sys
+import readline
 sys.path.append('../icm-deep-music-generation')
 from ec2vae.model import EC2VAE
 
@@ -56,7 +57,18 @@ def generate_midi(melody_array, file_path, bpm=120, start=0., chord_array=None):
 
     midi.write(file_path)
 
+def song_key_completer(text, state):
+    # Provide song key completion from the data_dict keys.
+    options = [key for key in data_dict.keys() if key.startswith(text)]
+    if state < len(options):
+        return options[state]
+    else:
+        return None
+
+
 def song_select():
+    readline.set_completer(song_key_completer)
+    readline.parse_and_bind("tab: complete")
     song_key = input("Pick a song, or press Enter to pick a random song:")
     if not song_key:
         song_key = random.choice(list(data_dict.keys()))
@@ -115,6 +127,7 @@ if __name__ == "__main__":
 
     # load model parameter
     ec2vae_param_path = '../icm-deep-music-generation/ec2vae/model_param/ec2vae-v1.pt'
+    # ec2vae_param_path = '../EC2-VAE/params_128.pt'
     ec2vae_model.load_model(ec2vae_param_path)
 
     from pprint import pprint
@@ -134,7 +147,7 @@ if __name__ == "__main__":
             data_dict = pickle.load(f)
     else:
         # print("Pickle not found. Processing directory...")
-        processed_data = process_directory_to_pickle(directory)
+        processed_data = process_directory_to_ec2vae_pickle(directory)
         with open(pickle_path, "rb") as f:
             data_dict = pickle.load(f)
     
@@ -163,6 +176,7 @@ if __name__ == "__main__":
     # print(f"Processing {total_length//window_size} windows of size {window_size}")
 
     # Process each window
+    print("total length:" , total_length)
     for i in range(0, total_length, window_size):
         window_index = i//window_size + 1
         # print(f"Processing window {window_index}/{total_length//window_size}")
@@ -179,7 +193,7 @@ if __name__ == "__main__":
         
         # print("Encoded size:", zp1.shape, zr1.shape, zp2.shape, zr2.shape)
         # Create prediction using input's latent pitch and reference's latent rhythm
-        prediction_window = decode(zp1, zr2, c1, viz=False)
+        prediction_window = decode(zp2, zr2, c1, viz=False)
         
         # Append the prediction window to our final prediction
         if final_prediction is None:

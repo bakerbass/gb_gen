@@ -6,90 +6,10 @@ import numpy as np
 import math
 from music21 import stream, note, midi, harmony, converter
 import chords
+from ec2vae_encode import m21_to_one_hot, midi_to_melody_array
+from polydis_encode import midi_to_prmat, midi_to_pianotree, midi_to_chordvec, merge_instruments_to_single_track
 
-def chord_to_one_hot(chord_obj):
-    """
-    Convert a music21 chord object to a 12-dimensional one-hot vector.
-    
-    Parameters:
-    chord_obj: a music21.chord.Chord instance
-    
-    Returns:
-    A list of 12 integers, where a 1 indicates that the pitch class is present.
-    """
-    one_hot = [0] * 12
-    # Get a list of unique pitch classes (0-11) in the chord.
-    for note in chord_obj.orderedPitchClasses:
-        one_hot[note] = 1
-    return one_hot
-
-def m21_to_one_hot(full_chords):
-    one_hot_chords = np.zeros((len(full_chords) * 4, 12), dtype=int)
-    idx = 0
-    for chord in full_chords:
-        oh = chord_to_one_hot(chord[1])
-        one_hot_chords[idx:idx + 3] = oh
-        idx += 4
-    return one_hot_chords
-
-
-def midi_to_melody_array(midi_file, bpm=120, 
-                              sustain_value=128, rest_value=129):
-    """
-    Converts a monophonic MIDI file into a quantized melody array.
-    
-    Parameters:
-      midi_file: path to the monophonic MIDI file.
-      bpm: beats per minute to interpret the note durations.
-      sustain_value: marker for sustained note values (default 128).
-      rest_value: marker for rests (default 129).
-    
-    Returns:
-      A NumPy array where each element represents a 16th note:
-        - 0-127: MIDI pitch value
-        - sustain_value (128): sustain marker
-        - rest_value (129): rest marker
-      
-      The grid is computed assuming one 16th note = 60/(bpm*4) seconds.
-    """
-    # Parse the MIDI file using music21.
-    midi_stream = converter.parse(midi_file).flat.notes
-    
-    # If bpm is not provided by the file metadata, we assume the given bpm.
-    quarter_sec = 60 / bpm          # Duration of a quarter note in seconds.
-    step = quarter_sec / 4          # 16th note step in seconds.
-
-    # Create a list of note events: each entry is [pitch, duration_sec, onset_sec]
-    events = []
-    for n in midi_stream:
-        # Only consider actual Note objects (ignoring rests).
-        if isinstance(n, note.Note):
-            onset_sec = n.offset * quarter_sec  # n.offset is in quarter lengths.
-            duration_sec = n.duration.quarterLength * quarter_sec
-            events.append([n.pitch.midi, duration_sec, onset_sec])
-    
-    # Determine total duration in seconds.
-    if events:
-        end_time = max(onset + dur for _, dur, onset in events)
-    else:
-        end_time = 0
-
-    num_steps = max(1, int(math.ceil(end_time / step)))
-    melody_array = np.full(num_steps, rest_value, dtype=int)
-
-    # For each note event, quantize its onset and duration:
-    for pitch, duration_sec, onset_sec in events:
-        start_idx = int(round(onset_sec / step))
-        note_steps = max(1, int(round(duration_sec / step)))
-        if start_idx < num_steps:
-            melody_array[start_idx] = pitch
-        # Mark sustained steps.
-        for i in range(start_idx + 1, min(start_idx + note_steps, num_steps)):
-            melody_array[i] = sustain_value
-
-    return melody_array
-
-def process_directory_to_pickle(directory, pickle_filename="song_data.pkl"):
+def process_directory_to_ec2vae_pickle(directory, pickle_filename="vae_data.pkl"):
     """
     Iterates over the directory, processes each melody and chord file pair,
     and stores the resulting melody and chord arrays in a dictionary.
@@ -157,12 +77,96 @@ def process_directory_to_pickle(directory, pickle_filename="song_data.pkl"):
     print(f"Data saved to {pickle_filename}. Total songs processed: {len(data_dict)}")
     return data_dict
 
+
+def process_directory_to_polydis_pickle(directory, pickle_filename="polydis_data.pkl", ec2_compatible_input=True):
+    """
+    Iterates over a directory, processes each MIDI file into PolyDis-compatible
+    representations, and saves the results to a pickle file.
+    
+    Each entry in the dictionary has keys:
+    - 'pr_mat' : (32, 128) piano-roll matrix
+    - 'ptree'  : (32, 16, 6) PianoTree representation
+    - 'c'      : (8, 36) chord matrix
+    
+    Parameters:
+        directory (str): Path to the folder containing MIDI files.
+        pickle_filename (str): Filename to save the resulting pickle dictionary.
+        ec2_compatible_input (bool): If True, processes files with specific chord/melody prefixes.
+    """
+    midi_files = [f for f in os.listdir(directory) if f.lower().endswith(".mid") or f.lower().endswith(".midi")]
+    
+    # Filter files based on prefixes
+    data_dict = {}
+    if not ec2_compatible_input:
+        for midi_file in midi_files:
+            midi_path = os.path.join(directory, midi_file)
+            try:
+                print(f"Processing: {midi_file}")
+                merged_midi = merge_instruments_to_single_track(midi_path)
+                temp_path = os.path.join(directory, "__temp_merged__.mid")
+                merged_midi.write(temp_path)
+                prmat = midi_to_prmat(temp_path)
+                ptree = midi_to_pianotree(temp_path)
+                chordvec = midi_to_chordvec(temp_path)
+
+                data_dict[midi_file] = {
+                    "pr_mat": prmat,
+                    "ptree": ptree,
+                    "c": chordvec
+                }
+
+                os.remove(temp_path)
+                
+            except Exception as e:
+                print(f"Error processing {midi_file}: {e}")
+                continue
+    else:
+        melody_files = [f for f in midi_files if f.startswith("MELODY_")]
+        chord_files = [f for f in midi_files if f.startswith("CHORDS_")]
+        for melody_file in melody_files:
+            suffix = melody_file[len("MELODY_"):]
+            if suffix in chord_files:
+                print(f"Processing pair: {melody_file}  <-->  CHORDS_{suffix}")
+                melody_path = os.path.join(directory, melody_file)
+                chord_path = os.path.join(directory, "CHORDS_" + suffix)
+                
+                try:
+                    combined = merge_instruments_to_single_track(melody_path, chord_path)
+                    combined_path = os.path.join(directory, "__temp_combined__.mid")
+                    combined.write(combined_path)
+                    prmat = midi_to_prmat(combined_path)
+                    ptree = midi_to_pianotree(combined_path)
+                    chordvec = midi_to_chordvec(combined_path)
+
+                    data_dict[suffix] = {
+                        "pr_mat": prmat,
+                        "ptree": ptree,
+                        "c": chordvec
+                    }
+
+                    os.remove(os.path.join(directory, "__temp_combined__.mid"))
+
+                except Exception as e:
+                    print(f"Error processing {melody_file} or {chord_path}: {e}")
+                    continue
+
+    # Save to pickle
+    with open(os.path.join(directory, pickle_filename), "wb") as f:
+        pickle.dump(data_dict, f)
+
+    print(f"PolyDis-compatible data saved to {pickle_filename}. Total files processed: {len(data_dict)}")
+    return data_dict
+
 if __name__ == "__main__":
     from pprint import pprint
     import random
     directory = "./GP_Melody_Chords"  # Replace with your actual directory path
-    pickle_filename = "song_data.pkl"
+    pickle_filename = "polydis_data.pkl"
     pickle_path = os.path.join(directory, pickle_filename)
+
+    input_melody = input("Pick an input test, or press Enter to pick the default test:")
+    if not input_melody:
+        input_melody = "test_midis/messtest.mid"
 
     # Load the data dictionary from the pickle file
     if os.path.exists(pickle_path):
@@ -170,33 +174,35 @@ if __name__ == "__main__":
             data_dict = pickle.load(f)
     else:
         print("Pickle not found. Processing directory...")
-        processed_data = process_directory_to_pickle(directory)
+        processed_data = process_directory_to_polydis_pickle(directory, pickle_filename=pickle_filename, ec2_compatible_input=True)
         with open(pickle_path, "rb") as f:
             data_dict = pickle.load(f)
     
     print("Available songs:\n")
     pprint(list(data_dict.keys()))
 
-    song_key = input("Pick a song, or press Enter to pick a random song:")
-    if not song_key:
-        song_key = random.choice(list(data_dict.keys()))
-        melody_array = data_dict[song_key]["melody"]
-        chord_array = data_dict[song_key]["chords"]
-        print("Melody array for", song_key, ":", melody_array)
-        print("Chord array for", song_key, ":", chord_array)
-    elif song_key in data_dict:
-        melody_array = data_dict[song_key]["melody"]
-        chord_array = data_dict[song_key]["chords"]
-        print("Melody array for", song_key, ":", melody_array)
-        print("Chord array for", song_key, ":", chord_array)
-    else:
-        print(f"Song key '{song_key}' not found in the dictionary.")
+    # song_key = input("Pick a song, or press Enter to pick a random song:")
+    # if not song_key:
+    #     song_key = random.choice(list(data_dict.keys()))
+    #     melody_array = data_dict[song_key]["melody"]
+    #     chord_array = data_dict[song_key]["chords"]
+    #     print("Melody array for", song_key, ":", melody_array)
+    #     print("Chord array for", song_key, ":", chord_array)
+    # elif song_key in data_dict:
+    #     melody_array = data_dict[song_key]["melody"]
+    #     chord_array = data_dict[song_key]["chords"]
+    #     print("Melody array for", song_key, ":", melody_array)
+    #     print("Chord array for", song_key, ":", chord_array)
+    # else:
+    #     print(f"Song key '{song_key}' not found in the dictionary.")
     
+
+
 """ Old main from melody.py
 if __name__ == "__main__":
     import os
     import chords
-    from pprint import pprint
+    from pprint import pprints
     # Example pluck_message output (for instance, from rule_based_melody).
     # Each entry: [midi, duration (sec), speed, timestamp]
     chord_stream = chords.MIDI_Stream("test_midis/slashchords.mid")
