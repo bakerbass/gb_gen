@@ -8,6 +8,7 @@ from music21 import stream, note, midi, harmony, converter
 import chords
 from ec2vae_encode import m21_to_one_hot, midi_to_melody_array
 from polydis_encode import midi_to_prmat, midi_to_pianotree, midi_to_chordvec, merge_instruments_to_single_track
+from tqdm import tqdm
 
 def process_directory_to_ec2vae_pickle(directory, pickle_filename="vae_data.pkl"):
     """
@@ -98,10 +99,10 @@ def process_directory_to_polydis_pickle(directory, pickle_filename="polydis_data
     # Filter files based on prefixes
     data_dict = {}
     if not ec2_compatible_input:
-        for midi_file in midi_files:
+        for midi_file in tqdm(midi_files, desc="Processing MIDI files"):
             midi_path = os.path.join(directory, midi_file)
             try:
-                print(f"Processing: {midi_file}")
+                # print(f"Processing: {midi_file}")
                 merged_midi = merge_instruments_to_single_track(midi_path)
                 temp_path = os.path.join(directory, "__temp_merged__.mid")
                 merged_midi.write(temp_path)
@@ -123,7 +124,7 @@ def process_directory_to_polydis_pickle(directory, pickle_filename="polydis_data
     else:
         melody_files = [f for f in midi_files if f.startswith("MELODY_")]
         chord_files = [f for f in midi_files if f.startswith("CHORDS_")]
-        for melody_file in melody_files:
+        for melody_file in tqdm(melody_files, desc="Processing MIDI files"):
             suffix = melody_file[len("MELODY_"):]
             if suffix in chord_files:
                 print(f"Processing pair: {melody_file}  <-->  CHORDS_{suffix}")
@@ -160,9 +161,10 @@ def process_directory_to_polydis_pickle(directory, pickle_filename="polydis_data
 if __name__ == "__main__":
     from pprint import pprint
     import random
-    directory = "./GP_Melody_Chords"  # Replace with your actual directory path
+    data_directory = "./midi"
+    out_directory = "./polydis_data"
     pickle_filename = "polydis_data.pkl"
-    pickle_path = os.path.join(directory, pickle_filename)
+    pickle_path = os.path.join(out_directory, pickle_filename)
 
     input_melody = input("Pick an input test, or press Enter to pick the default test:")
     if not input_melody:
@@ -174,7 +176,7 @@ if __name__ == "__main__":
             data_dict = pickle.load(f)
     else:
         print("Pickle not found. Processing directory...")
-        processed_data = process_directory_to_polydis_pickle(directory, pickle_filename=pickle_filename, ec2_compatible_input=True)
+        processed_data = process_directory_to_polydis_pickle(data_directory, pickle_filename=pickle_filename, ec2_compatible_input=False)
         with open(pickle_path, "rb") as f:
             data_dict = pickle.load(f)
     

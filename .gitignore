@@ -4,6 +4,7 @@ notes.md
 .conda
 __pycache__
 *.mid
+*.pkl
 .DS_Store
 run_console.py
 requirements.txt
