@@ -4,3 +4,6 @@
 [submodule "CMT-pytorch"]
 	path = CMT-pytorch
 	url = https://github.com/ckycky3/CMT-pytorch.git
+[submodule "icm-deep-music-generation"]
+	path = icm-deep-music-generation
+	url = https://github.com/ZZWaang/icm-deep-music-generation
