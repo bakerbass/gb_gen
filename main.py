@@ -13,16 +13,64 @@ from send_midi_osc import send_midi
 from chords import MIDI_Stream
 import chords
 from melody import rule_based_melody
-def open_neuralnote(app_path):
-    try:
-        subprocess.Popen(["open", app_path])
-        print(f"Opened NeuralNote at : {app_path}")
-    except Exception as e:
-        print(f"Failed to open NeuralNote: {e}")
+from pprint import pprint
+from pynput.keyboard import Controller, Key
+import platform
+if platform.system().lower() == "windows":
+    import win32gui
+    import win32process
 
-file_count = 0
+opened_pid = None
+
+def start_recording():
+    keyboard = Controller()
+    keyboard.press('r')
+    keyboard.release('r')
+
+def enum_handler(hwnd, lParam):
+    global opened_pid
+    try:
+        # Retrieve thread and process IDs associated with hwnd.
+        thread_id, process_id = win32process.GetWindowThreadProcessId(hwnd)
+        if process_id == opened_pid:
+            win32gui.SetForegroundWindow(hwnd)
+    except Exception as e:
+        print(f"Error handling window {hwnd}: {e}")
+
+
+def open_neuralnote(app_path):
+    current_os = platform.system().lower()
+   
+    if "windows" in current_os:
+        try:
+            # Open the application.
+            proc = subprocess.Popen(app_path)
+            opened_pid = proc.pid
+            # Wait briefly to allow the window to be created.
+            print("Waiting for NeuralNote to open...")
+            time.sleep(20)
+            print("NeuralNote opened.")
+            # Enumerate all windows and set focus on the matching one.
+            win32gui.EnumWindows(enum_handler, None)
+            print(f"Opened NeuralNote at: {app_path}")
+        except Exception as e:
+            print(f"Failed to open NeuralNote on Windows: {e}")
+            
+    elif "darwin" in current_os or "mac" in current_os:
+        try:
+            subprocess.Popen(["open", app_path])
+            print(f"Opened NeuralNote at: {app_path}")
+        except Exception as e:
+            print(f"Failed to open NeuralNote on macOS: {e}")
+            
+    else:
+        print("OS not recognized. Please run this script on Windows or macOS.")
+
 
 def midi_to_liveosc(file_path, segmented_sends=False, input_offset=0):
+    print("/" + "="*50 + "/")
+    print("midi_to_liveosc()")
+    print("/" + "="*50 + "/\n")
     global midi_file_count, midi_file_path
 
     if not validate_midi_file(file_path):
@@ -51,20 +99,26 @@ def midi_to_liveosc(file_path, segmented_sends=False, input_offset=0):
     interact() # melody, continuation, send continuation to liveosc
     return midi_file_path
 def anti_to_liveosc(file_path, clip_index=1):
+    print("/" + "="*50 + "/")
+    print("anti_to_liveosc()")
+    print("/" + "="*50 + "/\n")
     if not validate_midi_file(file_path):
         return
     send_midi(client, file_path, fire_immediately=False, clip_index=clip_index)
 def midi_to_GB_UDP(midi_file_path):
+    print("/" + "="*50 + "/")
+    print("midi_to_GB_UDP()")
+    print("/" + "="*50 + "/\n")
     midi_stream = MIDI_Stream(midi_file_path)
 
     chords, strum, pluck, full_chords = midi_stream.get_UDP_lists()
     chords_list = [list(item) for item in chords]
     strum_list = [list(item) for item in strum]
-    pluck_list = [list(item) for item in pluck]
     print(chords_list)
     print(strum_list)
 
     pluck_message, melody_path = rule_based_melody(full_chords)
+    pluck_list = [list(item) for item in pluck_message]
     # pluck_message = [[note (midi value), duration, speed, timestamp]]
 
     client.send_message("/Chords", chords_list)
@@ -96,7 +150,6 @@ def playing_position_handler(address, *args):
 
 midi_file_path = None
 model = None
-neuralnote_path = "../NeuralNote/build/NeuralNote_artefacts/Release/Standalone/NeuralNote.app/"  # Path to NeuralNote
 model_size = 'small'
 def chord_continuation(file_path, anti_dir):
     global model
@@ -107,38 +160,57 @@ def chord_continuation(file_path, anti_dir):
     save_midi_file(new_acc, anti_dir + "/continuation.mid")
 
 def continue_and_send():
+    print("/" + "="*50 + "/")
+    print("continue_and_send()")
+    print("/" + "="*50 + "/\n")
     cont = continuation(midi_file_path, model, 16, time_unit='bars', debug=True, viz=False)
     save_midi_file(cont, Anti_dir + "/continuation.mid")
     anti_to_liveosc(Anti_dir + "/continuation.mid")
 
 def interact():
-    threading.Thread(target=continue_and_send, daemon=True).start()
-    client.send_message("/live/clip/start_listen/playing_position", [0,0])
-    while playing_position < 60.0:
-        time.sleep(1)
-    # print("Moving on! Playing position: ", playing_position)
+    # threading.Thread(target=continue_and_send, daemon=True).start()
+    # client.send_message("/live/clip/start_listen/playing_position", [0,0])
+    # while playing_position < 60.0:
+    #     time.sleep(1)
+    # # print("Moving on! Playing position: ", playing_position)
+    start = time.time()
     midi_stream = MIDI_Stream(midi_file_path)
-    chords, strum, pluck, full_chords = midi_stream.get_UDP_lists()
-    melody_path = rule_based_melody(full_chords)
+    simple_chords = midi_stream.get_simple_chords()
+    melody, melody_path = rule_based_melody(simple_chords)
+    end = time.time()
+    melody_list = [list(item) for item in melody]
+    print("Time taken for melody generation: ", end-start)
+    pprint(melody_list)
     send_midi(client, melody_path, fire_immediately=True, track_index=1)
 
 if __name__ == "__main__":
     print("Hello!")
-    print("Starting NeuralNote...")
-    # open_neuralnote(neuralnote_path) # commented for vst use
-    synth.initialize_fluidsynth()
-
-    NN_dir = "./watcherNN"  # Directory to watch for new MIDI files from neuralnote (or a test directory)
+    global user
+    user = "RyanWindows"
+    if user == "LabMac":
+        neuralnote_path = "../NeuralNote/build/NeuralNote_artefacts/Release/Standalone/NeuralNote.app/"  # Path to NeuralNote
+        NN_dir = "/Users/music/Library/Caches/NeuralNote/neuralnote"  # Directory to watch for new MIDI files from neuralnote (or a test directory)
+    elif  user == "RyanWindows":
+        neuralnote_path = "C:/Program Files (x86)/NeuralNote/NeuralNote.exe"  # Path to NeuralNote
+        NN_dir = './watcherNN'
+    elif user == "RyanMac":
+        neuralnote_path = "../NeuralNote/build/NeuralNote_artefacts/Release/Standalone/NeuralNote.app/"  # Path to NeuralNote
+        NN_dir = '/Users/ryanbaker/Library/Caches/NeuralNote/neuralnote'
+    else:
+        NN_dir = './watcherNN'
     if not os.path.exists(NN_dir):
         os.makedirs(NN_dir)
     Anti_dir = "./watcherAnti"  # Directory to watch for new MIDI files from Anticipation 
     if not os.path.exists(Anti_dir):
         os.makedirs(Anti_dir)
-    
+
+    print("Starting NeuralNote...")
+    open_neuralnote(neuralnote_path) # commented for vst use
+
     # Load the model
-    print("Loading model...")
-    model = load_model(model_size)
-    print(f"Model loaded: {model_size}")
+    # print("Loading model...")
+    # model = load_model(model_size)
+    # print(f"Model loaded: {model_size}")
 
     # Start the OSC server in a separate thread
     server_ip = "127.0.0.1"

@@ -4,6 +4,7 @@ notes.md
 .conda
 __pycache__
 *.mid
+*.pkl
 tutorial.py
 .DS_Store
 *.pkl
