@@ -1,5 +1,8 @@
-from music21 import stream, note, midi
+from music21 import stream, note, midi, harmony, converter
 import random
+import math
+import numpy as np
+import re
 
 def rule_based_melody(full_chords, bpm=120, debug=False, speed_mode="direct"):
     number_of_chords = len(full_chords)
@@ -84,3 +87,61 @@ def rule_based_melody(full_chords, bpm=120, debug=False, speed_mode="direct"):
     file_path = "rule_based_melody.mid"
     melody.write("midi", file_path)
     return pluck_message, file_path
+
+def remix(data):
+    out = np.copy(data)
+    note_indices = np.where(data < 128)[0]
+    for i in range(len(note_indices)):
+        idx = note_indices[i]
+        shift = (i % 5) - 2  # create rising and falling echoes
+        new_idx = idx + shift
+        if 0 <= new_idx < len(data):
+            if data[new_idx] >= 128:  # only overwrite if original is rest
+                out[new_idx] = data[idx]
+    return out
+
+def melody_to_array(pluck_message, bpm, 
+                    sustain_value=128, rest_value=129, 
+                    pitch_min=0, pitch_max=127):
+    """
+    Converts a melody (given as pluck_message entries) into a quantized array format.
+    
+    Parameters:
+      pluck_message: list of [midi value, duration (seconds), speed, timestamp]
+      bpm: beats per minute used during generation.
+      sustain_value: integer value to mark sustained notes (default 128).
+      rest_value: integer value to mark rests (default 129).
+      (Only MIDI values in the range 0-127 are considered actual pitches.)
+      
+    Returns:
+      A NumPy array where each element is an integer representing a note event:
+        - 0-127: MIDI pitch
+        - sustain_value: sustain marker
+        - rest_value: rest marker
+      The array is quantized so that each element represents one 16th note.
+    """
+    # Duration of one 16th note in seconds.
+    step = 60 / (bpm * 4)
+    
+    # Determine the total duration from the pluck_message.
+    end_times = [entry[3] + entry[1] for entry in pluck_message]
+    total_duration = max(end_times) if end_times else 0
+    # Calculate the total number of 16th-note steps (ensure at least 1 step).
+    num_steps = max(1, math.ceil(total_duration / step))
+    
+    # Initialize array with rest markers.
+    melody_array = np.full(num_steps, rest_value, dtype=int)
+    
+    # For each note, fill the corresponding steps.
+    for entry in pluck_message:
+        pitch, duration_sec, speed, onset_sec = entry
+        # Compute start index and note length in time steps:
+        start_idx = int(round(onset_sec / step))
+        note_steps = max(1, int(round(duration_sec / step)))
+        # Set first step to the note's pitch.
+        if start_idx < num_steps:
+            melody_array[start_idx] = pitch
+        # Set subsequent steps (if any) to sustain marker.
+        for idx in range(start_idx + 1, min(start_idx + note_steps, num_steps)):
+            melody_array[idx] = sustain_value
+    return melody_array
