@@ -3,7 +3,15 @@ output.png
 notes.md
 .conda
 __pycache__
-*.mid
+./data
+./midi
+./GP_Melody_Chords
+./polydis_data
+./generated
+./generated_midis
+./WatcherAnti
+./WatcherNN
+./test_midis/truckin.mid
 *.pkl
 tutorial.py
 .DS_Store
