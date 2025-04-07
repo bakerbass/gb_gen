@@ -16,10 +16,12 @@ from melody import rule_based_melody
 from pprint import pprint
 from pynput.keyboard import Controller, Key
 import platform
+import itertools
+from ec2_gen import prediction_to_guitarbot, generate_prediction_for_one_song, song_select
+import torch
 if platform.system().lower() == "windows":
     import win32gui
     import win32process
-
 opened_pid = None
 
 def start_recording():
@@ -110,23 +112,29 @@ def midi_to_GB_UDP(midi_file_path):
     print("midi_to_GB_UDP()")
     print("/" + "="*50 + "/\n")
     midi_stream = MIDI_Stream(midi_file_path)
-
+    song_key, melody_array, chord_array = song_select('Grateful Dead - Uncle Johns Band.mid')
+    
     chords, strum, pluck, full_chords = midi_stream.get_UDP_lists()
+    
+    prediction = generate_prediction_for_one_song(song_key, melody_array=melody_array, chord_array=chord_array, window_size=32, window_overlap=0)
+    pluck_message = prediction_to_guitarbot(prediction, bpm=120, default_speed=7, rbm=None)
     chords_list = [list(item) for item in chords]
     strum_list = [list(item) for item in strum]
     print(chords_list)
     print(strum_list)
-
-    pluck_message, melody_path = rule_based_melody(full_chords)
+    print(pluck_message)
     pluck_list = [list(item) for item in pluck_message]
     # pluck_message = [[note (midi value), duration, speed, timestamp]]
 
     client.send_message("/Chords", chords_list)
     client.send_message("/Strum", strum_list)
     client.send_message("/Pluck", pluck_list)
+
+
     
 def watch_NN_dir(input_directory):
-    watch_directory(input_directory, midi_to_liveosc)
+    # watch_directory(input_directory, midi_to_liveosc) for ableton live testing
+    watch_directory(input_directory, midi_to_GB_UDP)
 
 def watch_Anti_dir(input_directory):
     watch_directory(input_directory, anti_to_liveosc)
@@ -183,6 +191,8 @@ def interact():
     pprint(melody_list)
     send_midi(client, melody_path, fire_immediately=True, track_index=1)
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 if __name__ == "__main__":
     print("Hello!")
     global user
@@ -203,6 +213,15 @@ if __name__ == "__main__":
     Anti_dir = "./watcherAnti"  # Directory to watch for new MIDI files from Anticipation 
     if not os.path.exists(Anti_dir):
         os.makedirs(Anti_dir)
+
+    ec2vae_model = EC2VAE.init_model()
+    ec2vae_param_path = './icm-deep-music-generation/ec2vae/model_param/ec2vae-v1.pt'
+    ec2vae_model.load_model(ec2vae_param_path)
+    
+    directory = "./GP_Melody_Chords"
+    pickle_filename = "vae_data.pkl"
+    pickle_path = os.path.join(directory, pickle_filename)
+    
 
     print("Starting NeuralNote...")
     open_neuralnote(neuralnote_path) # commented for vst use
