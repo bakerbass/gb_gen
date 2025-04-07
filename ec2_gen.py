@@ -67,9 +67,9 @@ def song_key_completer(text, state):
 def song_select():
     readline.set_completer(song_key_completer)
     readline.parse_and_bind("tab: complete")
-    song_key = input("Pick a song, or press Enter to pick a random song: ")
+    song_key = input("Pick a song, or press Enter to pick Uncle Johns Band: ") # a random song: ")
     if not song_key:
-        song_key = random.choice(list(data_dict.keys()))
+        song_key = 'Grateful Dead - Uncle Johns Band.mid'
     elif song_key not in data_dict:
         print(f"Song key '{song_key}' not found, picking randomly.")
         song_key = random.choice(list(data_dict.keys()))
@@ -139,7 +139,6 @@ def generate_prediction_for_one_song(song_key, song_data, window_size=32, window
     ms = chords.MIDI_Stream(source)
     full_chords = ms.get_full_chord_list()
     rbm, rbm_path = rule_based_melody(full_chords, bpm=120, debug=False)
-    pprint(rbm)
     in_mar = midi_to_melody_array(rbm_path)
     in_car = m21_to_one_hot(full_chords)
     
@@ -161,16 +160,40 @@ def generate_prediction_for_one_song(song_key, song_data, window_size=32, window
     print(f"Processed {num_windows} windows for song: {song_key}")
     # pprint(final_prediction)
     # final_prediction = remix(final_prediction)
-    pprint(prediction_to_guitarbot(final_prediction, bpm = 100, default_speed=7, rbm=rbm))
-    return final_prediction
+    gb = prediction_to_guitarbot(final_prediction, bpm = 100, default_speed=7, rbm=rbm)
+    return final_prediction, gb
 
-def save_prediction_to_midi(prediction, file_path, bpm=120, start=0.):
-    midi_output_path = os.path.join("generated_midis", file_path)
-    os.makedirs("generated_midis", exist_ok=True)
-    generate_midi(prediction, midi_output_path, bpm=120, start=0.)
-    print(f"Saved generated MIDI to {midi_output_path}")
+def split_pluck_message(pluck_message, speed_offset, bpm):
+    pluck_message = np.array(pluck_message)
+    if len(pluck_message) < 40:
+        return pluck_message
+    
+    # Create a list to hold our chunked pluck messages
+    chunked_messages = []
+    chunk_size = 39
+    last_note = [0, 0, 0, 0]
+    pen_note = last_note
+    qnd = 60 / bpm # quarter note duration in seconds
+    print("qnd: " + str(qnd))
+    # Split the array into chunks of 39 elements
+    last_ot = 0
+    for i in range(0, len(pluck_message), chunk_size):
+        chunk = pluck_message[i:i+chunk_size]
+        ot_offset = chunk[0, 3] - last_ot
+        last_ot = chunk[-1][3] # save last on time before offsetting
+        chunk[:, 3] = chunk[:, 3] - chunk[0, 3] + ot_offset
+        # Normalize the ontime to start from 0 + last note duration
+        chunk[:, 2] = chunk[:, 2] + speed_offset
+        result = []
+        for row in chunk:
+            result.append([int(row[0]), round(float(row[1]), 5), int(row[2]), round(float(row[3]), 5)])
+        chunk = result
+        chunked_messages.append(chunk)
+    
+    # Return the list of chunked arrays
+    return chunked_messages
 
-def insert_metronome_pulses(gb_array, bpm = 120, met_MNN=40, countin=True):
+def insert_metronome_pulses(gb_array, bpm = 120, met_MNN=40, countin=True, interleave=False):
     # [MNN, duration, speed, ontime]
     total_length = gb_array[-1][3] + gb_array[-1][1]
     tick_duration = 60 / bpm # quarter notes
@@ -184,6 +207,8 @@ def insert_metronome_pulses(gb_array, bpm = 120, met_MNN=40, countin=True):
         current_time += tick_duration
 
     gb_array = np.concatenate((gb_array, metronome), axis=0)
+    if interleave:
+        gb_array = gb_array[np.argsort(gb_array[:, 3])]
     gb_array[:, 0] = gb_array[:, 0].astype(int)
     gb_array[:, 2] = gb_array[:, 2].astype(int)
     return gb_array
@@ -237,14 +262,26 @@ def prediction_to_guitarbot(ec2_array, bpm=120, rbm=None, default_speed=7):
     speed_add = 9 - highest_speed
     print(f"Speed add: {speed_add}")
     print(f"Highest speed: {highest_speed}")
-    for row in pluck_message:
-        if(int(row[2]) + speed_add > 9):
-            print("wtf!")
-        result.append([int(row[0]), round(float(row[1]), 5), int(row[2]) + speed_add, round(float(row[3]),5)])
-        # Force columns 0 and 2 to be int, columns 1 and 3 to be floats.
-    pluck_message = insert_metronome_pulses(pluck_message, bpm=bpm, countin=True)
-    pluck_message = result
+
+    pluck_message = insert_metronome_pulses(pluck_message, bpm=bpm, countin=True, interleave=True)
+    print("Before split: \n")
+    pprint(pluck_message)
+    print("\n")
+    pluck_message = split_pluck_message(pluck_message, speed_add, bpm)
+    # for row in pluck_message:
+    #     if(int(row[2]) + speed_add > 9):
+    #         print("wtf!")
+    #     result.append([int(row[0]), round(float(row[1]), 5), int(row[2]) + speed_add, round(float(row[3]),5)])
+    #     # Force columns 0 and 2 to be int, columns 1 and 3 to be floats.
+    # pluck_message = result
     return pluck_message
+ 
+ 
+def save_prediction_to_midi(prediction, file_path, bpm=120, start=0.):
+    midi_output_path = os.path.join("generated_midis", file_path)
+    os.makedirs("generated_midis", exist_ok=True)
+    generate_midi(prediction, midi_output_path, bpm=120, start=0.)
+    print(f"Saved generated MIDI to {midi_output_path}")
 
 ##########################
 # Pickle Loading
@@ -292,62 +329,16 @@ if __name__ == "__main__":
     pprint(list(data_dict.keys()))
     song_key, melody_array, chord_array = song_select()
     song_data = data_dict[song_key]
-    # # Prompt user for solo type
-    # print("\nSelect a solo type:")
-    # print("1. Blues Solo")
-    # print("2. Rock Solo")
-    # print("3. Country Solo")
-    # solo_choice = input("Enter 1, 2, or 3: ").strip()
 
-    # def filter_blues(name): 
-    #     return "blues" in name.lower()
-    # def filter_rock(name): 
-    #     rock_keywords = ["acdc", "deep purple", "guns n' roses"]
-    #     return any(kw in name.lower() for kw in rock_keywords)
-    # def filter_country(name): 
-    #     return "country" in name.lower()
-    
-    # if solo_choice == "1":
-    #     solo_filter = filter_blues
     output_filename = "testing_output.mid"
-    # elif solo_choice == "2":
-    #     solo_filter = filter_rock
-    #     output_filename = "combined_rock_solo.mid"
-    # elif solo_choice == "3":
-    #     solo_filter = filter_country
-    #     output_filename = "combined_country_solo.mid"
-    # else:
-    #     print("Invalid choice. Exiting.")
-    #     sys.exit(1)
-    
-    # # Filter songs based on solo type.
-    # filtered_data = {key: val for key, val in data_dict.items() if solo_filter(key)}
-    # if not filtered_data:
-    #     print("No songs matched the selected criteria.")
-    #     sys.exit(1)
-    
-    # print("\nHow many solos do you want?")
-    # num_solos = input("Enter a number (default is all): ").strip()
-    # if num_solos.isdigit():
-    #     num_solos = int(num_solos)
-    #     if num_solos <= len(filtered_data):
-    #         filtered_data = dict(itertools.islice(filtered_data.items(), 0, num_solos))
-    #     else:
-    #         print(f"Requested number exceeds available songs. Using all {len(filtered_data)} songs.")
 
     print("Processing the following songs for the solo:")
     # pprint(list(filtered_data.keys()))
     
-    # Combine predictions from all filtered songs
-    combined_prediction = None
-
+  
     print(f"Generating for song: {song_key}")
-    prediction = generate_prediction_for_one_song(song_key, song_data, window_size=32, window_overlap=0, test_midi=input_melody)
+    prediction, gb = generate_prediction_for_one_song(song_key, song_data, window_size=32, window_overlap=0, test_midi=input_melody)
     # Instead of saving each song individually, we append to combined_prediction.
-    if combined_prediction is None:
-        combined_prediction = prediction
-    else:
-        combined_prediction = np.concatenate((combined_prediction, prediction), axis=0)
-    
-    save_prediction_to_midi(combined_prediction, output_filename, bpm=100, start=0.)
+    pprint(gb)
+    save_prediction_to_midi(prediction, output_filename, bpm=100, start=0.)
     # Note: guitarbot can only receive 30 second messages at a time.

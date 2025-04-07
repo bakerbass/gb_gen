@@ -19,6 +19,9 @@ import platform
 import itertools
 from ec2_gen import prediction_to_guitarbot, generate_prediction_for_one_song, song_select
 import torch
+
+from ec2vae.model import EC2VAE
+
 if platform.system().lower() == "windows":
     import win32gui
     import win32process
@@ -196,7 +199,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 if __name__ == "__main__":
     print("Hello!")
     global user
-    user = "RyanWindows"
+    user = "LabMac"
     if user == "LabMac":
         neuralnote_path = "../NeuralNote/build/NeuralNote_artefacts/Release/Standalone/NeuralNote.app/"  # Path to NeuralNote
         NN_dir = "/Users/music/Library/Caches/NeuralNote/neuralnote"  # Directory to watch for new MIDI files from neuralnote (or a test directory)
