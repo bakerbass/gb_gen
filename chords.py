@@ -2,7 +2,7 @@ from music21 import converter, chord, harmony, note, stream, midi
 import time
 import pretty_midi
 from pprint import pprint
-
+import numpy as np
 class MIDI_Stream:
     def __init__(self, midi_file, bpm=None, timesig=[4, 4]):
         self.midi_file = midi_file
@@ -134,3 +134,42 @@ class MIDI_Stream:
                 chord_list.append((chord[0], round(time_in_seconds, 5)))
                 strum_list.append((chord[4], round(time_in_seconds, 5)))
         return chord_list, strum_list, pluck_list, full_chords
+    
+def split_chord_message(chord_message):
+    """Split pluck message into chunks."""
+    # Convert the chord_message to an array with explicit dtype
+    chord_message_array = []
+    for item in chord_message:
+        # Convert the second element (time value) to float
+        chord_message_array.append([str(item[0]), float(item[1])])
+    
+    # Create array with explicit dtypes
+    chord_message = np.array([(str(x[0]), float(x[1])) for x in chord_message_array],
+                            dtype=[('chord', 'U50'), ('time', float)])
+    
+    if len(chord_message) < 40:
+        return chord_message
+    
+    chunked_messages = []
+    chunk_size = 39
+    last_ot = 0.0
+    
+    for i in range(0, len(chord_message), chunk_size):
+        chunk = chord_message[i:i+chunk_size].copy()  # Make a copy to avoid modifying original
+        # print(f"Chunk {i//chunk_size + 1} starts at time: {chunk[0]['time']}")
+        
+        # Access structured array with field names
+        ot_offset = float(chunk[0]['time']) - last_ot
+        last_ot = float(chunk[-1]['time'])
+        
+        # Update times using field access
+        for j in range(len(chunk)):
+            chunk[j]['time'] = float(chunk[j]['time']) - float(chunk[0]['time']) + ot_offset
+        
+        # Convert back to list format for the return value
+        result = []
+        for row in chunk:
+            result.append([row['chord'], round(float(row['time']), 5)])
+            
+        chunked_messages.append(result)
+    return chunked_messages

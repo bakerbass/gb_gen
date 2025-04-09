@@ -10,7 +10,7 @@ from midi_utils import validate_midi_file, get_total_bars, save_midi_file
 from anti import inpaint, continuation
 import synth
 from send_midi_osc import send_midi
-from chords import MIDI_Stream
+from chords import MIDI_Stream, split_chord_message
 import chords
 from melody import rule_based_melody
 from pprint import pprint
@@ -134,8 +134,8 @@ def midi_to_GB_UDP(midi_file_path):
     pprint(pluck_message)
     # pluck_message = [[note (midi value), duration, speed, timestamp]]
 
-    client.send_message("/Chords", chords_list)
-    client.send_message("/Strum", strum_list)
+    client.send_message("/Chords", split_chord_message(chords_list))
+    client.send_message("/Strum", split_chord_message(strum_list))
     client.send_message("/Pluck", pluck_list)
 
 
