@@ -3,9 +3,10 @@ import random
 import math
 import numpy as np
 import re
-
-def rule_based_melody(full_chords, bpm=120, debug=False, speed_mode="direct"):
+from pprint import pprint
+def rule_based_melody(full_chords, bpm=100, debug=True, speed_mode="direct"):
     number_of_chords = len(full_chords)
+    print("Number of chords:", number_of_chords)
     melody = stream.Stream()
     pluck_message = []  # Each entry: [midi value, duration (seconds), speed, timestamp]
     time_cursor = 0     # Running timestamp (in seconds)
@@ -17,6 +18,9 @@ def rule_based_melody(full_chords, bpm=120, debug=False, speed_mode="direct"):
 
     for chord in full_chords:
         # Unknown chord: instead of a rest, extend previous note.
+        m21chord = chord[1].pitches
+        if len(m21chord) == 0:
+            continue
         if chord[0] == "Chord Symbol Cannot Be Identified":
             if prev_n is not None:
                 extend_amt = quarter_note_duration
@@ -31,8 +35,15 @@ def rule_based_melody(full_chords, bpm=120, debug=False, speed_mode="direct"):
             continue
 
         # Get random pitch from the chord.
-        m21chord = chord[-1].pitches
-        random_index = random.randint(0, len(m21chord) - 1)
+        
+        # print("m21: \n")
+        # print(m21chord)
+        if len(m21chord) > 1:
+            if debug:
+                print("Empty chord; skipping...")
+            random_index = random.randint(0, len(m21chord) - 1)
+        else:
+            random_index = 0
         random_mel_pitch = m21chord[random_index]
         n = note.Note(random_mel_pitch, type="quarter")
 
@@ -83,7 +94,6 @@ def rule_based_melody(full_chords, bpm=120, debug=False, speed_mode="direct"):
             prev_pluck_idx = len(pluck_message) - 1
 
         time_cursor += n.quarterLength * quarter_note_duration
-
     file_path = "rule_based_melody.mid"
     melody.write("midi", file_path)
     return pluck_message, file_path

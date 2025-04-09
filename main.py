@@ -17,10 +17,11 @@ from pprint import pprint
 from pynput.keyboard import Controller, Key
 import platform
 import itertools
-from ec2_gen import prediction_to_guitarbot, generate_prediction_for_one_song, song_select
+# from ec2_gen import prediction_to_guitarbot, generate_prediction_for_one_song, song_select
 import torch
 
-from ec2vae.model import EC2VAE
+from ec2_gen import EC2Generator 
+
 
 if platform.system().lower() == "windows":
     import win32gui
@@ -114,19 +115,23 @@ def midi_to_GB_UDP(midi_file_path):
     print("/" + "="*50 + "/")
     print("midi_to_GB_UDP()")
     print("/" + "="*50 + "/\n")
+    global ec2_generator  # Add global declaration here too
+    
     midi_stream = MIDI_Stream(midi_file_path)
-    song_key, melody_array, chord_array = song_select('Grateful Dead - Uncle Johns Band.mid')
+    song_key, melody_array, chord_array, song_data = ec2_generator.song_select('Grateful Dead - Uncle Johns Band.mid')
     
     chords, strum, pluck, full_chords = midi_stream.get_UDP_lists()
-    
-    prediction = generate_prediction_for_one_song(song_key, melody_array=melody_array, chord_array=chord_array, window_size=32, window_overlap=0)
-    pluck_message = prediction_to_guitarbot(prediction, bpm=120, default_speed=7, rbm=None)
+    full_chords = midi_stream.get_full_chord_list()
+
+    prediction, pluck_message = ec2_generator.generate_prediction_for_one_song(song_key, song_data, window_size=32, window_overlap=0, test_midi=midi_file_path)
+    # pprint(prediction)
+    # pluck_message = ec2_generator.prediction_to_guitarbot(prediction, bpm=120, default_speed=7, rbm=None)
     chords_list = [list(item) for item in chords]
     strum_list = [list(item) for item in strum]
+    pluck_list = [list(item) for item in pluck_message]
     print(chords_list)
     print(strum_list)
-    print(pluck_message)
-    pluck_list = [list(item) for item in pluck_message]
+    pprint(pluck_message)
     # pluck_message = [[note (midi value), duration, speed, timestamp]]
 
     client.send_message("/Chords", chords_list)
@@ -198,7 +203,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 if __name__ == "__main__":
     print("Hello!")
-    global user
+    global user, ec2_generator
     user = "LabMac"
     if user == "LabMac":
         neuralnote_path = "../NeuralNote/build/NeuralNote_artefacts/Release/Standalone/NeuralNote.app/"  # Path to NeuralNote
@@ -216,18 +221,18 @@ if __name__ == "__main__":
     Anti_dir = "./watcherAnti"  # Directory to watch for new MIDI files from Anticipation 
     if not os.path.exists(Anti_dir):
         os.makedirs(Anti_dir)
-
-    ec2vae_model = EC2VAE.init_model()
-    ec2vae_param_path = './icm-deep-music-generation/ec2vae/model_param/ec2vae-v1.pt'
-    ec2vae_model.load_model(ec2vae_param_path)
-    
+        
+    ec2_generator = EC2Generator(
+        model_path='./icm-deep-music-generation/ec2vae/model_param/ec2vae-v1.pt',
+        pickle_path="./GP_Melody_Chords/ec2_with_UJB.pkl"
+    )
     directory = "./GP_Melody_Chords"
     pickle_filename = "vae_data.pkl"
     pickle_path = os.path.join(directory, pickle_filename)
     
 
-    print("Starting NeuralNote...")
-    open_neuralnote(neuralnote_path) # commented for vst use
+    # print("Starting NeuralNote...")
+    # open_neuralnote(neuralnote_path) # commented for vst use
 
     # Load the model
     # print("Loading model...")
@@ -242,8 +247,9 @@ if __name__ == "__main__":
     server_thread.start()
 
     # Start the OSC client
+    # client_ip = "192.168.1.1"
     client_ip = "127.0.0.1"
-    client_port = 11000
+    client_port = 12000
     client = udp_client.SimpleUDPClient(client_ip, client_port)
 
     # Start watching the directory for new MIDI files in a separate thread
@@ -251,9 +257,9 @@ if __name__ == "__main__":
     NNWatcher_thread.daemon = True
     NNWatcher_thread.start()
 
-    AntiWatcher_thread = threading.Thread(target=watch_Anti_dir, args=(Anti_dir,))
-    AntiWatcher_thread.daemon = True
-    AntiWatcher_thread.start()
+    # AntiWatcher_thread = threading.Thread(target=watch_Anti_dir, args=(Anti_dir,))
+    # AntiWatcher_thread.daemon = True
+    # AntiWatcher_thread.start()
 
     # Wait for a MIDI file to be detected
     while True:
