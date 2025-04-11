@@ -14,10 +14,6 @@ from chords import MIDI_Stream, split_chord_message
 import chords
 from melody import rule_based_melody
 from pprint import pprint
-from pynput.keyboard import Controller, Key
-import platform
-import itertools
-# from ec2_gen import prediction_to_guitarbot, generate_prediction_for_one_song, song_select
 import torch
 
 from ec2_gen import EC2Generator 
@@ -104,11 +100,6 @@ def start_server(ip, port):
 def print_error(address, args):
     print("Received error from Live: %s" % args)
 
-scene = -1
-# def scene_handler(address, *args):
-#     global scene
-#     scene = args[0]  # assumes a single int value is sent
-    
 def playing_position_handler(address, *args):
     global playing_position
     playing_position = args[0]  # assumes a single float value is sent
@@ -116,37 +107,6 @@ def playing_position_handler(address, *args):
 midi_file_path = None
 model = None
 model_size = 'small'
-def chord_continuation(file_path, anti_dir):
-    global model
-    if not model:
-        print("Model not loaded. Please load a model first.")
-        return
-    new_acc = continuation(file_path, model, 16, time_unit='bars', debug=True, viz=False)
-    save_midi_file(new_acc, anti_dir + "/continuation.mid")
-
-def continue_and_send():
-    print("/" + "="*50 + "/")
-    print("continue_and_send()")
-    print("/" + "="*50 + "/\n")
-    cont = continuation(midi_file_path, model, 16, time_unit='bars', debug=True, viz=False)
-    save_midi_file(cont, Anti_dir + "/continuation.mid")
-    anti_to_liveosc(Anti_dir + "/continuation.mid")
-
-def interact():
-    # threading.Thread(target=continue_and_send, daemon=True).start()
-    # client.send_message("/live/clip/start_listen/playing_position", [0,0])
-    # while playing_position < 60.0:
-    #     time.sleep(1)
-    # # print("Moving on! Playing position: ", playing_position)
-    start = time.time()
-    midi_stream = MIDI_Stream(midi_file_path)
-    simple_chords = midi_stream.get_simple_chords()
-    melody, melody_path = rule_based_melody(simple_chords)
-    end = time.time()
-    melody_list = [list(item) for item in melody]
-    print("Time taken for melody generation: ", end-start)
-    pprint(melody_list)
-    send_midi(client, melody_path, fire_immediately=True, track_index=1)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
