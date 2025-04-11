@@ -4,6 +4,7 @@ import math
 import numpy as np
 import re
 from pprint import pprint
+
 def rule_based_melody(full_chords, bpm=100, debug=True, speed_mode="direct"):
     number_of_chords = len(full_chords)
     print("Number of chords:", number_of_chords)
