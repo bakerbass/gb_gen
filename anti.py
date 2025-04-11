@@ -16,7 +16,11 @@ from anticipation.visuals import visualize
 from anticipation.config import *
 from anticipation.vocab import *
 from anticipation.convert import MAX_DUR
-
+from main import save_midi_file, anti_to_liveosc
+from chords import MIDI_Stream
+from melody import rule_based_melody
+from pprint import pprint
+from midi_utils import send_midi
 from model_loader import load_model
 from audio_utils import normalize_wav
 from midi_utils import detect_bpm
@@ -53,6 +57,38 @@ def inpaint(midi_file_path, start_time, end_time, model, time_unit='bars'):
     visualize(inpainted, 'output.png')
     combined = ops.combine(inpainted, anticipated)
     return inpainted, combined
+
+def chord_continuation(file_path, anti_dir):
+    global model
+    if not model:
+        print("Model not loaded. Please load a model first.")
+        return
+    new_acc = continuation(file_path, model, 16, time_unit='bars', debug=True, viz=False)
+    save_midi_file(new_acc, anti_dir + "/continuation.mid")
+
+def continue_and_send(midi_file_path, anti_dir):
+    print("/" + "="*50 + "/")
+    print("continue_and_send()")
+    print("/" + "="*50 + "/\n")
+    cont = continuation(midi_file_path, model, 16, time_unit='bars', debug=True, viz=False)
+    save_midi_file(cont, anti_dir + "/continuation.mid")
+    anti_to_liveosc(anti_dir + "/continuation.mid")
+
+def interact(client):
+    # threading.Thread(target=continue_and_send, daemon=True).start()
+    # client.send_message("/live/clip/start_listen/playing_position", [0,0])
+    # while playing_position < 60.0:
+    #     time.sleep(1)
+    # # print("Moving on! Playing position: ", playing_position)
+    start = time.time()
+    midi_stream = MIDI_Stream(midi_file_path)
+    simple_chords = midi_stream.get_simple_chords()
+    melody, melody_path = rule_based_melody(simple_chords)
+    end = time.time()
+    melody_list = [list(item) for item in melody]
+    print("Time taken for melody generation: ", end-start)
+    pprint(melody_list)
+    send_midi(client, melody_path, fire_immediately=True, track_index=1)
 
 def continuation(midi_file_path, model, length, newlength=None, time_unit='bars', debug=False, viz=False):
     # Outputs a continuation of the input MIDI file.
