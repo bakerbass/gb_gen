@@ -78,7 +78,6 @@ def midi_to_GB_UDP(midi_file_path):
         # print(telapse - send_t)
         time.sleep(0.005)
         telapse = time.time()
-        print(telapse - send_t)
     client.send_message("/Chords", empty_chord)
     client.send_message("/Strum", empty_strum)
     client.send_message("/Pluck", pluck_list)
