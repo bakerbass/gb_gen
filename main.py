@@ -52,6 +52,7 @@ def midi_to_GB_UDP(midi_file_path):
 
     empty_chord = chords_list[-1]
     empty_chord[0] = 'On'
+    empty_chord[1] = pluck_list[-1][3] # set the ontime chord to the last pluck message ontime
     empty_strum = ['UP', 0.0]
     empty_chord = [empty_chord]
     empty_strum = [empty_strum]

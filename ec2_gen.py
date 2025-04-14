@@ -221,7 +221,7 @@ class EC2Generator:
         gb_array[:, 0] = gb_array[:, 0].astype(int)
         gb_array[:, 2] = gb_array[:, 2].astype(int)
         return gb_array
-    
+
     def prediction_to_guitarbot(self, ec2_array, bpm=100, rbm=None, default_speed=7):
         """Convert EC2 array to GuitarBot pluck messages."""
         tick_duration = 60 / bpm / 4 # sixteenth notes
