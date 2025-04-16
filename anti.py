@@ -16,15 +16,15 @@ from anticipation.visuals import visualize
 from anticipation.config import *
 from anticipation.vocab import *
 from anticipation.convert import MAX_DUR
-from main import save_midi_file, anti_to_liveosc
+from liveosc_utils import save_midi_file, anti_to_liveosc, send_midi
 from chords import MIDI_Stream
 from melody import rule_based_melody
 from pprint import pprint
-from midi_utils import send_midi
 from model_loader import load_model
 from audio_utils import normalize_wav
 from midi_utils import detect_bpm
 from datetime import datetime
+
 def inpaint(midi_file_path, start_time, end_time, model, time_unit='bars'):
     bpm = detect_bpm(midi_file_path)
     if bpm is None:
