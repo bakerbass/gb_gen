@@ -9,7 +9,7 @@ from model_loader import load_model
 from midi_utils import validate_midi_file, get_total_bars, save_midi_file
 from anti import inpaint, continuation
 import synth
-from send_midi_osc import send_midi
+from liveosc_utils import send_midi
 from chords import MIDI_Stream, split_chord_message
 import chords
 from melody import rule_based_melody
@@ -27,8 +27,6 @@ def midi_to_GB_UDP(midi_file_path):
     print("midi_to_GB_UDP()")
     print("/" + "="*50 + "/\n")
 
-    global scene
-    print(f"Scene: {scene}")
     # ableton_client.send_message("/live/clip/get/playing_position", [2, 2]) # Click track, current scene
     global ec2_generator  # Add global declaration here too
     midi_stream = MIDI_Stream(midi_file_path)
@@ -44,20 +42,29 @@ def midi_to_GB_UDP(midi_file_path):
     # pluck_message = ec2_generator.prediction_to_guitarbot(prediction, bpm=120, default_speed=7, rbm=None)
     chords_list = [list(item) for item in chords]
     strum_list = [list(item) for item in strum]
-    pluck_list = [list(item) for item in pluck_message]
+    pluck_list = pluck_message#[list(item) for item in pluck_message]
     # print(chords_list)
     # print(strum_list)
 
     # pluck_message = [[note (midi value), duration, speed, timestamp]]
 
-    empty_chord = chords_list[-1]
-    empty_chord[0] = 'On'
-    empty_strum = ['UP', 0.0]
-    empty_chord = [empty_chord]
-    empty_strum = [empty_strum]
+
+    empty_chord = []
+    isNested = True if str(type(pluck_list[0][0])) == "<class 'list'>" else False
+    print(f"Is nested: {isNested}")
+    if isNested:
+        for message in pluck_list:
+            print(f"Appending: {message[-1][3]}")
+            empty_chord.append(['On', message[-1][3]])
+    else:
+        empty_chord.append(['On', pluck_list[-1][3]])    
+    
+    empty_strum = [['UP', 0.0]]
+    # empty_strum = [empty_strum]
+    
     pprint(empty_chord)
     pprint(empty_strum)
-    pprint(pluck_message)
+    pprint(pluck_list)
 
     bpm_secs = 60 / 100 # default bpm for now but we can easily query this from osc
     global playing_position
@@ -65,19 +72,28 @@ def midi_to_GB_UDP(midi_file_path):
         ableton_client.send_message("/live/song/get/current_song_time", [])
     print(f"Playing position: {playing_position}")
     t_record = time.time()
-
-
     overall_wait = bpm_secs - (playing_position % bpm_secs) # time until next beat
-    send_t = t_record + overall_wait - 0.35 # 0.35 is set latency
+    send_t = t_record + overall_wait - 0.35 - .15 # 0.35 is set latency
     telapse = time.time()
     while(telapse - send_t <  0.01):
         # print(telapse - send_t)
         time.sleep(0.005)
         telapse = time.time()
-    client.send_message("/Chords", empty_chord)
-    client.send_message("/Strum", empty_strum)
-    client.send_message("/Pluck", pluck_list)
+    if isNested:
+        for index in range(len(pluck_list)):
+            client.send_message("/Chords", [empty_chord[index]])
+            client.send_message("/Strum", empty_strum)
+            client.send_message("/Pluck", pluck_list[index])
+            pprint(empty_chord[index])
+            pprint(empty_strum)
+            pprint(pluck_list[index])
+    else: 
+        client.send_message("/Chords", empty_chord)
+        client.send_message("/Strum", empty_strum)
+        client.send_message("/Pluck", pluck_list)
     print("Sent")
+    
+    ec2_generator.save_prediction_to_midi(prediction, "GB_Generation.mid")
     # .35 seconds of delay between sent message and it being played
 
     
