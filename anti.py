@@ -16,14 +16,13 @@ from anticipation.visuals import visualize
 from anticipation.config import *
 from anticipation.vocab import *
 from anticipation.convert import MAX_DUR
-from main import save_midi_file, anti_to_liveosc
 from chords import MIDI_Stream
 from melody import rule_based_melody
 from pprint import pprint
 from midi_utils import send_midi
 from model_loader import load_model
 from audio_utils import normalize_wav
-from midi_utils import detect_bpm
+from midi_utils import detect_bpm, save_midi_file
 from datetime import datetime
 def inpaint(midi_file_path, start_time, end_time, model, time_unit='bars'):
     bpm = detect_bpm(midi_file_path)
@@ -66,13 +65,13 @@ def chord_continuation(file_path, anti_dir):
     new_acc = continuation(file_path, model, 16, time_unit='bars', debug=True, viz=False)
     save_midi_file(new_acc, anti_dir + "/continuation.mid")
 
-def continue_and_send(midi_file_path, anti_dir):
-    print("/" + "="*50 + "/")
-    print("continue_and_send()")
-    print("/" + "="*50 + "/\n")
-    cont = continuation(midi_file_path, model, 16, time_unit='bars', debug=True, viz=False)
-    save_midi_file(cont, anti_dir + "/continuation.mid")
-    anti_to_liveosc(anti_dir + "/continuation.mid")
+# def continue_and_send(midi_file_path, anti_dir):
+#     print("/" + "="*50 + "/")
+#     print("continue_and_send()")
+#     print("/" + "="*50 + "/\n")
+#     cont = continuation(midi_file_path, model, 16, time_unit='bars', debug=True, viz=False)
+#     save_midi_file(cont, anti_dir + "/continuation.mid")
+#     anti_to_liveosc(anti_dir + "/continuation.mid")
 
 def interact(client):
     # threading.Thread(target=continue_and_send, daemon=True).start()

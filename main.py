@@ -6,10 +6,9 @@ from pythonosc.dispatcher import Dispatcher
 from pythonosc import osc_server, udp_client
 from watcher import watch_directory
 from model_loader import load_model
-from midi_utils import validate_midi_file, get_total_bars, save_midi_file
-from anti import inpaint, continuation
+from midi_utils import validate_midi_file, get_total_bars, save_midi_file, send_midi
+# from anti import inpaint, continuation
 import synth
-from send_midi_osc import send_midi
 from chords import MIDI_Stream, split_chord_message
 import chords
 from melody import rule_based_melody
