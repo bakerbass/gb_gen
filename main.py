@@ -6,7 +6,7 @@ from pythonosc.dispatcher import Dispatcher
 from pythonosc import osc_server, udp_client
 from watcher import watch_directory
 from model_loader import load_model
-from midi_utils import validate_midi_file, get_total_bars, save_midi_file, send_midi
+from midi_utils import validate_midi_file, get_total_bars, save_midi_file
 # from anti import inpaint, continuation
 import synth
 from chords import MIDI_Stream, split_chord_message
@@ -14,7 +14,6 @@ import chords
 from melody import rule_based_melody
 from pprint import pprint
 import torch
-
 from ec2_gen import EC2Generator 
 from utils import *
 from liveosc_utils import *

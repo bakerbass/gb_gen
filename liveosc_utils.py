@@ -1,6 +1,5 @@
 from midi_utils import *
-from send_midi_osc import send_midi
-from anti import interact
+# from anti import interact
 
 def midi_to_liveosc(client, file_path, segmented_sends=False, input_offset=0):
     print("/" + "="*50 + "/")
@@ -31,7 +30,7 @@ def midi_to_liveosc(client, file_path, segmented_sends=False, input_offset=0):
             send_midi(client, file_path, fire_immediately=False, clip_index=midi_file_count-1, file_idx=midi_file_count)
     else:
         send_midi(client, file_path, fire_immediately=True, time_offset=input_offset)
-    interact() # melody, continuation, send continuation to liveosc
+    # interact() # melody, continuation, send continuation to liveosc
     return midi_file_path
 def anti_to_liveosc(client, file_path, clip_index=1):
     print("/" + "="*50 + "/")
@@ -40,7 +39,7 @@ def anti_to_liveosc(client, file_path, clip_index=1):
     if not validate_midi_file(file_path):
         return
     send_midi(client, file_path, fire_immediately=False, clip_index=clip_index)
-   
+    
 def send_midi(client, file_path, bpm=120, timesig=[4, 4], fire_immediately=False, time_offset=0, track_index=0, clip_index=0, file_idx=0):
     """
     Sends the MIDI note events in file_path to Ableton via OSC.
