@@ -39,6 +39,7 @@ def midi_to_GB_UDP(midi_file_path):
         chords, strum, pluck, full_chords = midi_stream.get_UDP_lists()
         full_chords = midi_stream.get_full_chord_list()
         start = time.time()
+        # for n in range(num_gens):
         prediction, pluck_message = ec2_generator.generate_prediction_for_one_song(song_key, song_data, bpm=bpm, window_size=32, window_overlap=0, test_midi=midi_file_path)
         end = time.time()
         print("Time taken for prediction generation: ", end-start)
@@ -75,9 +76,11 @@ def midi_to_GB_UDP(midi_file_path):
         while(playing_position < 0.0):
             ableton_client.send_message("/live/song/get/current_song_time", [])
         print(f"Playing position: {playing_position}")
+        
+        gb_latency = 0.35
         t_record = time.time()
         overall_wait = bpm_secs - (playing_position % bpm_secs) # time until next beat
-        send_t = t_record + overall_wait - 0.35 - .15 # 0.35 is set latency
+        send_t = t_record + overall_wait - gb_latency #- .15 # 0.35 is set latency
         telapse = time.time()
         while(telapse - send_t <  0.01):
             # print(telapse - send_t)
@@ -97,7 +100,6 @@ def midi_to_GB_UDP(midi_file_path):
             client.send_message("/Pluck", pluck_list)
         ui_client.send_message("/guitarbot/log", "File detected: " + midi_file_path)
         print("Sent")
-        
         ec2_generator.save_prediction_to_midi(prediction, "GB_Generation.mid")
     except Exception as e:
         print(f"Error in midi_to_GB_UDP: {e}")
