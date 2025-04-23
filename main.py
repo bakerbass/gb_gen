@@ -20,6 +20,7 @@ from ec2_gen import EC2Generator
 from utils import *
 from liveosc_utils import *
 
+
 playing_position = -1.0
 bpm = 100
 def midi_to_GB_UDP(midi_file_path):
@@ -28,7 +29,7 @@ def midi_to_GB_UDP(midi_file_path):
     print("/" + "="*50 + "/")
     print("midi_to_GB_UDP()")
     print("/" + "="*50 + "/\n")
-
+    ui_client.send_message("/guitarbot/bpm", bpm)
     # ableton_client.send_message("/live/clip/get/playing_position", [2, 2]) # Click track, current scene
     global ec2_generator 
     try:
@@ -94,6 +95,7 @@ def midi_to_GB_UDP(midi_file_path):
             client.send_message("/Chords", empty_chord)
             client.send_message("/Strum", empty_strum)
             client.send_message("/Pluck", pluck_list)
+        ui_client.send_message("/guitarbot/log", "File detected: " + midi_file_path)
         print("Sent")
         
         ec2_generator.save_prediction_to_midi(prediction, "GB_Generation.mid")
@@ -193,6 +195,10 @@ if __name__ == "__main__":
     ableton_client_ip = "127.0.0.1"
     ableton_client_port = 11000
     ableton_client = udp_client.SimpleUDPClient(ableton_client_ip, ableton_client_port)
+
+    ui_client_ip = "127.0.0.1"
+    ui_client_port = 11002
+    ui_client = udp_client.SimpleUDPClient(ui_client_ip, ui_client_port)
 
     # Start watching the directory for new MIDI files in a separate thread
     NNWatcher_thread = threading.Thread(target=watch_NN_dir, args=(NN_dir,))
