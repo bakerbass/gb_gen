@@ -135,7 +135,7 @@ class EC2Generator:
                 melody_array[i:i+window_size],
                 chord_array[i:i+window_size])
     
-    def generate_prediction_for_one_song(self, song_key, song_data, window_size=32, window_overlap=0, test_midi=None, whatif_melody=False):
+    def generate_prediction_for_one_song(self, song_key, song_data, window_size=32, window_overlap=0, test_midi=None, whatif_melody=False, bpm=100):
         """Generate prediction for one song."""
         print(f"Processing song: {song_key}")
         melody_array = song_data["melody"]
@@ -144,7 +144,7 @@ class EC2Generator:
         
         ms = chords.MIDI_Stream(source)
         full_chords = ms.get_full_chord_list()
-        rbm, rbm_path = rule_based_melody(full_chords, bpm=100, debug=False)
+        rbm, rbm_path = rule_based_melody(full_chords, bpm=bpm, debug=False)
         in_mar = midi_to_melody_array(rbm_path)
         in_car = m21_to_one_hot(full_chords)
         
@@ -166,7 +166,7 @@ class EC2Generator:
                 final_prediction = np.concatenate((final_prediction, prediction_window))
         
         print(f"Processed {num_windows} windows for song: {song_key}")
-        gb = self.prediction_to_guitarbot(final_prediction, bpm=100, default_speed=7, rbm=rbm)
+        gb = self.prediction_to_guitarbot(final_prediction, bpm=bpm, default_speed=7, rbm=rbm)
         return final_prediction, gb
     
     def split_pluck_message(self, pluck_message, speed_offset, bpm):
@@ -211,7 +211,7 @@ class EC2Generator:
         if countin:
             for pluck in gb_array:
                 pluck[3] = pluck[3] + 4 * tick_duration # add 4 beats to all ontimes
-        for i in range(0, int(total_length / tick_duration)):
+        while current_time <= total_length + 1:
             metronome.append([met_MNN, 0.1, 1, current_time])
             current_time += tick_duration
 
@@ -221,7 +221,7 @@ class EC2Generator:
         gb_array[:, 0] = gb_array[:, 0].astype(int)
         gb_array[:, 2] = gb_array[:, 2].astype(int)
         return gb_array
-    
+
     def prediction_to_guitarbot(self, ec2_array, bpm=100, rbm=None, default_speed=7):
         """Convert EC2 array to GuitarBot pluck messages."""
         tick_duration = 60 / bpm / 4 # sixteenth notes
@@ -272,7 +272,6 @@ class EC2Generator:
         speed_add = 9 - highest_speed
         # print(f"Speed add: {speed_add}")
         # print(f"Highest speed: {highest_speed}")
-
         pluck_message = self.insert_metronome_pulses(pluck_message, bpm=bpm, countin=True, interleave=True)
         # print("Before split: \n")
         # pprint(pluck_message)

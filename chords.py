@@ -115,12 +115,13 @@ class MIDI_Stream:
 
     def get_UDP_lists(self):
         if self.bpm is None:
-            self.bpm = 100 # self.get_tempo()
+            self.bpm = self.get_tempo()
         print("BPM: ", self.bpm)
         full_chords = self.get_full_chord_list()
         chord_list = []
         strum_list = []
         pluck_list = []
+        last_chord = full_chords[0]
         for chord in full_chords:
             beat_str = chord[3].split(" ")[-1]
             try:
@@ -130,9 +131,15 @@ class MIDI_Stream:
             time_in_seconds = (beat - 1) / self.bpm * 60
             if "pedal" in chord[0]:
                 pluck_list.append((chord[0], time_in_seconds))
-            elif chord[4] != "HOLD" and chord[0] != "Chord Symbol Cannot Be Identified":
+            if chord[4] != "HOLD" and chord[0] != "Chord Symbol Cannot Be Identified":
                 chord_list.append((chord[0], round(time_in_seconds, 5)))
                 strum_list.append((chord[4], round(time_in_seconds, 5)))
+            elif chord[4] == "HOLD" and chord[0] != last_chord[0]:
+                # If the last chord is different and this chord is marked as "HOLD", 
+                # we need to add it anyways and override the "HOLD"
+                chord_list.append((chord[0], round(time_in_seconds, 5)))
+                strum_list.append(("DOWN", round(time_in_seconds, 5)))
+            last_chord = chord
         return chord_list, strum_list, pluck_list, full_chords
     
 def split_chord_message(chord_message):
