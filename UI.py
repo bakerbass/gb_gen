@@ -227,6 +227,7 @@ class OSCServer:
             self.signal_emitter.midi_message_received.emit(message)
             if "file detected" in message.lower():
                 # Update activity label
+                time.sleep(60 / bpm)
                 self.signal_emitter.status_update.emit("Guitarbot's turn: 4")
                 self.signal_emitter.midi_message_received.emit("START_ROBOT_VISUALIZATION")
                 
