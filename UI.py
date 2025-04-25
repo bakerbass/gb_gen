@@ -178,9 +178,8 @@ class MidiMonitor:
                         numBars = 8
                     elif ctrl_num == 16:
                         numBars = 16
-                    length = (60.0 / bpm) * 4 * numBars
-                    msg = f'MIDI CONTROLLER: {ctrl_num}, value={ctrl_val}'
-                    time.sleep(60.0 / bpm * 4)
+                    length = (60.0 / bpm) * 4 * (numBars + 1) # Extra bar added accounting for count in
+                    # time.sleep(60.0 / bpm * 4)
                     self.signal_emitter.midi_message_received.emit(message)
                     self.signal_emitter.recording_started.emit(length)
     
@@ -228,7 +227,8 @@ class OSCServer:
             self.signal_emitter.midi_message_received.emit(message)
             if "file detected" in message.lower():
                 # Update activity label
-                self.signal_emitter.status_update.emit("Guitarbot's turn: Improvising!")
+                self.signal_emitter.status_update.emit("Guitarbot's turn: 4")
+                self.signal_emitter.midi_message_received.emit("START_ROBOT_VISUALIZATION")
                 
     def _handle_bpm(self, address, *args):
         """Handle BPM messages from main.py"""
@@ -275,6 +275,11 @@ class GuitarBotUI(QMainWindow):
         self.recording_duration = 0
         self.recording_elapsed = 0
         self.is_recording = False
+
+        # Add robot improvisation variables
+        self.is_robot_playing = False
+        self.robot_elapsed_beats = 0
+        self.robot_duration = 0
         
         # Start OSC server to listen for messages from main.py
         self.osc_server = OSCServer("127.0.0.1", 11002, self.midi_signal_emitter)
@@ -365,7 +370,7 @@ class GuitarBotUI(QMainWindow):
         self.status_label = QLabel("Waiting to begin jamming...")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setStyleSheet("font-weight: bold; color: red;")
-        self.status_label.setFont(QFont("Arial", 30))
+        self.status_label.setFont(QFont("Arial", 50))
         status_layout.addWidget(self.status_label)
         status_widget.setLayout(status_layout)
 
@@ -384,7 +389,12 @@ class GuitarBotUI(QMainWindow):
 
     def handle_midi_message(self, message):
         """Handle incoming MIDI messages"""
-        self.log_display.log(message)
+        # Check for special control messages
+        if message == "START_ROBOT_VISUALIZATION":
+            self.start_robot_visualization()
+        else:
+            # Regular log message
+            self.log_display.log(message)
 
     def update_status(self, message):
         """Update the status label with the given message"""
@@ -405,45 +415,113 @@ class GuitarBotUI(QMainWindow):
         self.current_beat = 0
         self.beat_boxes[self.current_beat].set_active(True)
         
-        # Update UI
-        self.recording_indicator.set_recording(True)
-        self.recording_label.setText("Recording")
+        # # Update UI
+        self.recording_indicator.set_recording(False)
         
         # Start beat timer
         self.beat_timer.start(int(60.0 / bpm * 1000))
 
         # Update activity label
-        self.status_label.setText("User's turn to jam!")
+        self.status_label.setText("User's turn to jam! 4")
         self.status_label.setStyleSheet("font-weight: bold; color: green;")
         
-        self.log_display.log(f"Recording will run for {duration} sec")
-    
-    def update_beat(self):
-        """Update beat visualization during recording"""
-        if not self.is_recording:
-            return
+        recLenth =  self.recording_duration - ((60.0 / bpm) * 4)
+        self.log_display.log(f"Recording will run for {recLenth:.1f} sec")
 
+    def start_robot_visualization(self):
+        """Start beat box visualization for robot's improvisation"""
         # Reset all beat boxes
         for box in self.beat_boxes:
             box.set_active(False)
         
-        # Increment beat
-        self.current_beat = (self.current_beat + 1) % 4
-        self.elapsed_beats += 1  # Count elapsed beats
-        
-        # Activate current beat box
+        # Set initial beat to 0
+        self.current_beat = 0
         self.beat_boxes[self.current_beat].set_active(True)
         
-        # Calculate elapsed and remaining time
+        # Start beat timer for robot visualization
+        # We use the same BPM as during recording
+        self.robot_elapsed_beats = 0
+        self.is_robot_playing = True
+        
+        # Use the same duration as the recording (minus the count-in bar)
+        # Count-in is 4 beats (1 bar)
         beat_duration = 60.0 / bpm  # Duration of one beat in seconds
-        total_elapsed = self.elapsed_beats * beat_duration
-        remaining = max(0, self.recording_duration - total_elapsed)
+        count_in_duration = 4 * beat_duration
+        self.robot_duration = self.recording_duration - count_in_duration
         
-        self.recording_label.setText("Recording")
+        # Start beat timer
+        self.beat_timer.start(int(60.0 / bpm * 1000))
         
-        # Check if recording is complete
-        if remaining <= 0:
-            self.stop_recording()
+        self.log_display.log(f"Robot improvisation will run for {self.robot_duration:.1f} sec")
+    
+    def update_beat(self):
+        """Update beat visualization during recording"""
+        if self.is_recording:
+            # Reset all beat boxes
+            for box in self.beat_boxes:
+                box.set_active(False)
+            
+            # Increment beat
+            self.current_beat = (self.current_beat + 1) % 4
+            self.elapsed_beats += 1  # Count elapsed beats
+            
+            # Activate current beat box
+            self.beat_boxes[self.current_beat].set_active(True)
+            
+            # Calculate elapsed and remaining time
+            beat_duration = 60.0 / bpm  # Duration of one beat in seconds
+            total_elapsed = self.elapsed_beats * beat_duration
+            remaining = max(0, self.recording_duration - total_elapsed)
+
+            # Update countdown during count-in (first 4 beats)
+            if self.elapsed_beats == 1:
+                self.status_label.setText("User's turn to jam! 3")
+            elif self.elapsed_beats == 2:
+                self.status_label.setText("User's turn to jam! 2")
+            elif self.elapsed_beats == 3:
+                self.status_label.setText("User's turn to jam! 1")        
+            # Activate recording indicator after first bar (4 beats)
+            elif self.elapsed_beats == 4:
+                self.recording_indicator.set_recording(True)
+                self.recording_label.setText("Recording")
+                self.status_label.setText("User's turn to jam! Go!")        
+            
+            # Check if recording is complete
+            if remaining <= 0:
+                self.stop_recording()
+
+        # Handle robot improvisation mode
+        elif self.is_robot_playing:
+            # Reset all beat boxes
+            for box in self.beat_boxes:
+                box.set_active(False)
+            
+            # Increment beat
+            self.current_beat = (self.current_beat + 1) % 4
+            self.robot_elapsed_beats += 1  # Count elapsed beats
+            
+            # Activate current beat box
+            self.beat_boxes[self.current_beat].set_active(True)
+            
+            # Calculate elapsed and remaining time
+            beat_duration = 60.0 / bpm  # Duration of one beat in seconds
+            total_elapsed = self.robot_elapsed_beats * beat_duration
+            remaining = max(0, self.recording_duration - total_elapsed)
+
+            # Update countdown during count-in (first 4 beats)
+            if self.robot_elapsed_beats == 1:
+                self.status_label.setText("Guitarbot's turn: 3")
+            elif self.robot_elapsed_beats == 2:
+                self.status_label.setText("Guitarbot's turn: 2")
+            elif self.robot_elapsed_beats == 3:
+                self.status_label.setText("Guitarbot's turn: 1")        
+            # Activate recording indicator after first bar (4 beats)
+            elif self.robot_elapsed_beats == 4:
+                self.status_label.setText("Guitarbot's turn: Improvising!")   
+            
+            # Check if robot improvisation is complete
+            if remaining <= 0:
+                self.stop_robot_visualization()
 
     def stop_recording(self):
         """Stop recording and reset UI elements"""
@@ -459,8 +537,21 @@ class GuitarBotUI(QMainWindow):
         self.recording_label.setText("Not Recording")
 
         # Update activity label
-        self.status_label.setText("Guitarbot's turn:")
-        self.status_label.setStyleSheet("color: blue;")
+        self.status_label.setText("Waiting for Guitarbot...")
+        self.status_label.setStyleSheet("font-weight: bold; color: red;")
+
+    def stop_robot_visualization(self):
+        """Stop the beat visualization for robot's improvisation"""
+        self.beat_timer.stop()
+        self.is_robot_playing = False
+        
+        # Reset all beat boxes
+        for box in self.beat_boxes:
+            box.set_active(False)
+        
+        # Update status label
+        self.status_label.setText("Jam is complete!")
+        self.status_label.setStyleSheet("font-weight: bold; color: red;")
             
     def closeEvent(self, event):
         """Handle window close event"""
@@ -474,13 +565,6 @@ class GuitarBotUI(QMainWindow):
         
         # Accept the close event
         event.accept()
-
-
-def ui():
-    app = QApplication(sys.argv)
-    gui = GuitarBotUI()
-    gui.show()
-    sys.exit(app.exec())
     
 if __name__ == "__main__":
     app = QApplication(sys.argv)
