@@ -100,6 +100,11 @@ def midi_to_GB_UDP(midi_file_path):
             client.send_message("/Pluck", pluck_list)
         ui_client.send_message("/guitarbot/log", "File detected: " + midi_file_path)
         ui_client.send_message("/guitarbot/log", "Chords: " + str(chords_list))
+        # UI receives chord list and uses it to display chordify like UI (chordify.net)
+        # Ignore pedal chords
+        # display blank box if chord is same
+        # sync up for guitarbot's turn
+        
         print("Sent")
         ec2_generator.save_prediction_to_midi(prediction, "GB_Generation.mid")
     except Exception as e:
