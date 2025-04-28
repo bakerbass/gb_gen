@@ -2,10 +2,11 @@ import sys
 import threading
 import time
 import json
+import re
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, 
-                            QWidget, QLabel, QTextEdit, QGroupBox, QProgressBar, QSplitter, QFrame)
-from PyQt6.QtCore import Qt, pyqtSignal, QObject, QTimer
-from PyQt6.QtGui import QFont, QColor
+                            QWidget, QLabel, QTextEdit, QGroupBox, QProgressBar, QSplitter, QFrame, QScrollArea)
+from PyQt6.QtCore import Qt, pyqtSignal, QObject, QTimer, QRect
+from PyQt6.QtGui import QFont, QColor, QPainter, QBrush
 from pythonosc.dispatcher import Dispatcher
 from pythonosc import osc_server
 import rtmidi
@@ -25,6 +26,7 @@ class MidiSignalEmitter(QObject):
     recording_started = pyqtSignal(float)  # Signal with recording duration in seconds
     recording_stopped = pyqtSignal()
     status_update = pyqtSignal(str)
+    chord_data_received = pyqtSignal(list)  # Signal for chord data
 
 class LogDisplay(QTextEdit):
     """Text display widget for showing incoming messages"""
@@ -39,6 +41,183 @@ class LogDisplay(QTextEdit):
         self.append(message)
         self.ensureCursorVisible()
 
+class ChordBox(QFrame):
+    """Widget representing a single chord box"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.chord_name = ""
+        self.active = False
+        self.setMinimumSize(100, 80)
+        self.setMaximumSize(100, 80)
+        self.setStyleSheet("""
+            QFrame {
+                border: 2px solid #aaaaaa;
+                border-radius: 5px;
+                background-color: white;
+            }
+        """)
+    
+    def set_chord(self, chord_name):
+        """Set the chord name for this box"""
+        self.chord_name = chord_name
+        self.update()
+    
+    def set_active(self, is_active):
+        """Set the active state of the chord box"""
+        self.active = is_active
+        if is_active:
+            self.setStyleSheet("""
+                QFrame {
+                    border: 2px solid black;
+                    border-radius: 5px;
+                    background-color: #4CAF50;
+                }
+            """)
+        else:
+            self.setStyleSheet("""
+                QFrame {
+                    border: 2px solid #aaaaaa;
+                    border-radius: 5px;
+                    background-color: white;
+                }
+            """)
+    
+    def paintEvent(self, event):
+        """Paint the chord box with the chord name"""
+        super().paintEvent(event)
+        if self.chord_name:
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(Qt.GlobalColor.black)
+            font = QFont("Arial", 14, QFont.Weight.Bold)
+            painter.setFont(font)
+            
+            # Draw chord name centered in the box
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.chord_name)
+
+class ChordDisplay(QWidget):
+    """Widget to display a sequence of chords"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.chord_boxes = []
+        self.current_index = -1
+        self.chord_data = []  # List of [chord, timestamp]
+        self.visible_boxes = 8  # Number of visible chord boxes
+        self.start_index = 0  # Starting index for visible chord boxes
+        self.max_boxes = 64  # Maximum number of chord boxes to create (8 bars)
+        
+        # Create layout
+        self.layout = QVBoxLayout(self)
+        
+        # Add title
+        title_label = QLabel()
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        self.layout.addWidget(title_label)
+        
+        # Create scroll area for chord boxes
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)  # Hide scroll bar
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        
+        # Create container widget for chord boxes
+        self.chord_container = QWidget()
+        self.chord_layout = QHBoxLayout(self.chord_container)
+        self.chord_layout.setContentsMargins(0, 0, 0, 0)
+        self.chord_layout.setSpacing(10)  # Space between chord boxes
+        
+        # Create chord boxes (more than visible for scrolling)
+        for i in range(self.max_boxes):
+            chord_box = ChordBox()
+            self.chord_boxes.append(chord_box)
+            self.chord_layout.addWidget(chord_box)
+            # Only make the first 'visible_boxes' actually visible
+            chord_box.setVisible(i < self.visible_boxes)
+        
+        # Add chord container to scroll area
+        self.scroll_area.setWidget(self.chord_container)
+        self.layout.addWidget(self.scroll_area)
+    
+    def set_chord_data(self, chord_data):
+        """Set the chord data and prepare visualization"""
+        # Filter out pedal chords and unidentified chords
+        filtered_data = []
+        for chord, timestamp in chord_data:
+            if "pedal" not in chord.lower() and "cannot be identified" not in chord.lower():
+                filtered_data.append([chord, timestamp])
+        
+        self.chord_data = filtered_data
+        self.current_index = -1
+        self.start_index = 0  # Reset to beginning
+        
+        # Reset all chord boxes
+        for box in self.chord_boxes:
+            box.set_chord("")
+            box.set_active(False)
+        
+        # Fill chord boxes based on timestamps
+        # Each box represents one beat
+        beat_duration = 60.0 / bpm  # Duration of one beat in seconds
+        
+        # Calculate how many boxes we need based on the last timestamp
+        if filtered_data:
+            last_timestamp = filtered_data[-1][1]
+            total_beats = int(last_timestamp / beat_duration) + 1
+            total_beats = min(total_beats, self.max_boxes)  # Cap at max boxes
+        else:
+            total_beats = self.visible_boxes
+        
+        # Keep track of last displayed chord to handle repeats
+        last_displayed_chord = None
+        
+        # Populate chord boxes
+        for i in range(total_beats):
+            # Find chord at this beat position
+            time_position = i * beat_duration
+            
+            # Find the chord exactly at this time position (with small tolerance)
+            matching_chord = None
+            for chord, timestamp in self.chord_data:
+                # Check if timestamp is very close to the current time position
+                if abs(timestamp - time_position) < 0.1:  # 0.1 sec tolerance
+                    # Only display if this is not a repeat of the last chord
+                    if chord != last_displayed_chord:
+                        matching_chord = chord
+                        last_displayed_chord = chord
+                    break  # Stop after finding a matching chord
+            
+            # Set the chord or leave it blank
+            if matching_chord and i < len(self.chord_boxes):
+                self.chord_boxes[i].set_chord(matching_chord)
+            elif i < len(self.chord_boxes):
+                self.chord_boxes[i].set_chord("")  # Leave blank for no chord at this time
+    
+    def update_current_beat(self, beat_position):
+        """Update which chord box is active based on beat position"""
+        # Calculate which boxes should be visible based on current beat
+        if beat_position >= 0:
+            # Ensure we show at least 4 boxes ahead of current position
+            target_start = max(0, beat_position - 3)  # Show 3 boxes behind current position
+            
+            # Only scroll if necessary (when beat progresses past middle of visible area)
+            if beat_position > self.start_index + 3:
+                self.start_index = target_start
+            
+            # Update visibility of chord boxes
+            for i, box in enumerate(self.chord_boxes):
+                # Make visible if within the 8-box window
+                box.setVisible(self.start_index <= i < self.start_index + self.visible_boxes)
+        
+        # Reset all boxes
+        for box in self.chord_boxes:
+            box.set_active(False)
+        
+        # Activate current box if within range
+        if 0 <= beat_position < len(self.chord_boxes):
+            self.chord_boxes[beat_position].set_active(True)
+
 class RecordingIndicator(QWidget):
     """Widget to display recording status"""
     def __init__(self, parent=None):
@@ -47,10 +226,7 @@ class RecordingIndicator(QWidget):
         self.setMinimumSize(30, 30)
         self.setMaximumSize(30, 30)
     
-    def paintEvent(self, event):
-        from PyQt6.QtGui import QPainter, QBrush
-        from PyQt6.QtCore import QRect
-        
+    def paintEvent(self, event):        
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
@@ -132,8 +308,6 @@ class MidiMonitor:
             
             if "volt" in name.lower():
                 midi_index_to_choose = i
-            # elif "midi" in name.lower():
-            #     midi_index_to_choose = i
         
         return midi_index_to_choose
     
@@ -179,7 +353,6 @@ class MidiMonitor:
                     elif ctrl_num == 16:
                         numBars = 16
                     length = (60.0 / bpm) * 4 * (numBars + 1) # Extra bar added accounting for count in
-                    # time.sleep(60.0 / bpm * 4)
                     self.signal_emitter.midi_message_received.emit(message)
                     self.signal_emitter.recording_started.emit(length)
     
@@ -212,6 +385,7 @@ class OSCServer:
         # Handle messages from main.py
         dispatcher.map("/guitarbot/log", self._handle_log)
         dispatcher.map("/guitarbot/bpm", self._handle_bpm)
+        dispatcher.map("/guitarbot/chords", self._handle_chords)
         # Default handler for any other messages
         dispatcher.set_default_handler(self._default_handler)
         
@@ -238,11 +412,48 @@ class OSCServer:
             bpm = args[0]
             message = f"Received BPM: {bpm}"
             self.signal_emitter.midi_message_received.emit(message)
+
+    def _handle_chords(self, address, *args):
+        """Handle chord data messages from main.py"""
+        if args:
+            message = f"Received chords: {args[0]}"
+            self.signal_emitter.midi_message_received.emit(message)
+            
+            # Try to parse chord data from the string representation
+            try:
+                # Look for chord data pattern: [['E', 0.0], ['A', 1.2], ...]
+                chord_str = args[0]
+                # Extract chord data using regex
+                pattern = r"\['([^']+)',\s*([\d.]+)\]"
+                matches = re.findall(pattern, chord_str)
+                
+                if matches:
+                    chord_data = [[chord, float(timestamp)] for chord, timestamp in matches]
+                    self.signal_emitter.chord_data_received.emit(chord_data)
+            except Exception as e:
+                self.signal_emitter.midi_message_received.emit(f"Error parsing chord data: {e}")
+                
+            # # For testing - also try to parse directly from a string like:
+            # # Chords: [['E', 0.0], ['E', 0.6], ['A', 1.2], ...]
+            # try:
+            #     if isinstance(args[0], str) and "Chords:" in args[0]:
+            #         chord_str = args[0].split("Chords:", 1)[1].strip()
+            #         # Try to directly evaluate the string as a Python list
+            #         # (this is a bit risky but useful for development)
+            #         chord_data = eval(chord_str)
+            #         self.signal_emitter.chord_data_received.emit(chord_data)
+            # except Exception as e:
+            #     # Silently fail for this fallback method
+            #     pass
             
     def _default_handler(self, address, *args):
         """Handle any other OSC message"""
         message = f"Received {address}: {args}"
         self.signal_emitter.midi_message_received.emit(message)
+
+        # Check if this might be a chord message
+        if args and isinstance(args[0], str) and "Chords:" in args[0]:
+            self._handle_chords(address, args[0])
     
     def stop(self):
         """Stop the OSC server"""
@@ -266,6 +477,7 @@ class GuitarBotUI(QMainWindow):
         self.midi_signal_emitter.recording_started.connect(self.start_recording)
         self.midi_signal_emitter.recording_stopped.connect(self.stop_recording)
         self.midi_signal_emitter.status_update.connect(self.update_status)
+        self.midi_signal_emitter.chord_data_received.connect(self.handle_chord_data)
         
         # Initialize UI components
         self.init_ui()
@@ -356,30 +568,34 @@ class GuitarBotUI(QMainWindow):
         
         # Create a splitter to allow resizing between controls and log
         splitter = QSplitter(Qt.Orientation.Vertical)
+
+        # Create container for status and chord display
+        status_chord_container = QWidget()
+        status_chord_layout = QVBoxLayout(status_chord_container)
         
+        # Add status label (moved up)
+        self.status_label = QLabel("Waiting to begin jamming...")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setStyleSheet("font-weight: bold; color: red;")
+        self.status_label.setFont(QFont("Arial", 36))
+        status_chord_layout.addWidget(self.status_label)
+        
+        # Add chord display widget
+        self.chord_display = ChordDisplay()
+        status_chord_layout.addWidget(self.chord_display)
+
         # Add log display
         log_group = QGroupBox()
         log_layout = QVBoxLayout()
         self.log_display = LogDisplay()
         log_layout.addWidget(self.log_display)
         log_group.setLayout(log_layout)
-        main_layout.addWidget(log_group)
         
-        # Add status label
-        status_widget = QGroupBox()
-        status_layout = QVBoxLayout()
-        self.status_label = QLabel("Waiting to begin jamming...")
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label.setStyleSheet("font-weight: bold; color: red;")
-        self.status_label.setFont(QFont("Arial", 50))
-        status_layout.addWidget(self.status_label)
-        status_widget.setLayout(status_layout)
-
-        splitter.addWidget(status_widget)
+        splitter.addWidget(status_chord_container)
         splitter.addWidget(log_group)
 
-        # Set initial sizes for the splitter (30% status, 70% log)
-        splitter.setSizes([400, 200])
+        # Set initial sizes for the splitter (40% status/chords, 60% log)
+        splitter.setSizes([400, 600])
         
         # Add splitter to main layout
         main_layout.addWidget(splitter)
@@ -396,6 +612,12 @@ class GuitarBotUI(QMainWindow):
         else:
             # Regular log message
             self.log_display.log(message)
+
+    def handle_chord_data(self, chord_data):
+        """Handle received chord data"""
+        self.log_display.log(f"Received {len(chord_data)} chords for visualization")
+        # Update chord display with new chord data
+        self.chord_display.set_chord_data(chord_data)
 
     def update_status(self, message):
         """Update the status label with the given message"""
@@ -438,6 +660,9 @@ class GuitarBotUI(QMainWindow):
         # Set initial beat to 0
         self.current_beat = 0
         self.beat_boxes[self.current_beat].set_active(True)
+
+        # Reset chord activation flag
+        self.chord_activation_started = False
         
         # Start beat timer for robot visualization
         # We use the same BPM as during recording
@@ -503,6 +728,20 @@ class GuitarBotUI(QMainWindow):
             
             # Activate current beat box
             self.beat_boxes[self.current_beat].set_active(True)
+
+            # Start chord activation after 1 bar (4 beats)
+            if self.robot_elapsed_beats >= 4:
+                self.chord_activation_started = True
+            
+            # Update chord display if chord activation has started
+            if self.chord_activation_started:
+                # We subtract 4 to account for the delayed start
+                # and use the absolute beat position for scrolling chord boxes
+                chord_position = self.robot_elapsed_beats - 4
+                self.chord_display.update_current_beat(chord_position)
+            else:
+                # No chord box activation yet
+                self.chord_display.update_current_beat(-1)
             
             # Calculate elapsed and remaining time
             beat_duration = 60.0 / bpm  # Duration of one beat in seconds
@@ -549,6 +788,10 @@ class GuitarBotUI(QMainWindow):
         # Reset all beat boxes
         for box in self.beat_boxes:
             box.set_active(False)
+
+        # Reset chord display boxes
+        for i in range(8):
+            self.chord_display.update_current_beat(-1)  # Deactivate all
         
         # Update status label
         self.status_label.setText("Jam is complete!")
