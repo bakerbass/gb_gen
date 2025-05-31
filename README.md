@@ -1,5 +1,12 @@
-# Note 2 Anticipation (Name in progress)
-This repo contains all of the tools used to generate melodies and chord progressions for Georgia Tech's GuitarBot, a guitar playing robot.
+# GuitarBot Generative Expressive Network
+GuitarBot jams.
+
+In order to make that statement true:
+* Guitarbot needs ears
+* Guitarbot needs data
+* Guitarbot needs you
+
+For this project, NeuralNote is used to transcribe audio into MIDI, which is piped to python scripts that analyze the chords and generate a melody.
 
 # How to use
 
